@@ -11,7 +11,7 @@ __config() -> {
 };
 
 global_remy_name = 'remy';
-global_bridge_version = '0.1.7';
+global_bridge_version = '0.1.8';
 global_max_command_ttl_ms = 10000;
 global_clock_skew_ms = 10000;
 global_last_command_id = null;
@@ -19,13 +19,21 @@ global_next_poll_tick = 0;
 global_next_heartbeat_tick = 0;
 global_heartbeat_slots = 12;
 global_follow_min_distance = 3.0;
+global_follow_resume_distance = 4.0;
 global_follow_max_distance = 24.0;
 global_follow_max_vertical = 2.0;
+global_follow_search_radius = 4;
+global_follow_max_nodes = 80;
+global_follow_max_drop = 2;
+global_follow_stuck_limit = 16;
 global_move_expires_ms = 0;
 global_is_moving = false;
 global_follow_active = false;
 global_follow_owner_name = null;
 global_follow_last_status = 'idle';
+global_follow_last_route = null;
+global_follow_last_pos = null;
+global_follow_stuck_ticks = 0;
 global_active_goal = 'idle';
 global_goal_generation = 0;
 global_follow_generation = 0;
@@ -175,8 +183,149 @@ __is_dangerous_name(name) -> __is_name_in(name, [
     'sweet_berry_bush',
     'minecraft:sweet_berry_bush',
     'powder_snow',
-    'minecraft:powder_snow'
+    'minecraft:powder_snow',
+    'water',
+    'minecraft:water'
 ]);
+
+__is_support_name(name) -> name && !__is_passable_name(name) && !__is_dangerous_name(name);
+
+__flat_distance(a, b) -> (
+    [ax, ay, az] = a;
+    [bx, by, bz] = b;
+    dx = bx - ax;
+    dz = bz - az;
+    sqrt(dx * dx + dz * dz)
+);
+
+__distance3(a, b) -> (
+    [ax, ay, az] = a;
+    [bx, by, bz] = b;
+    dx = bx - ax;
+    dy = by - ay;
+    dz = bz - az;
+    sqrt(dx * dx + dy * dy + dz * dz)
+);
+
+__pos_key(pos) -> (
+    [x, y, z] = pos;
+    x + ',' + y + ',' + z
+);
+
+__candidate_at(base_y, x, z) -> (
+    levels = [base_y, base_y + 1, base_y - 1, base_y - 2];
+    result = null;
+    loop(length(levels),
+        y = levels:_;
+        if(!result,
+            foot = __block_name_at([x, y, z]);
+            head = __block_name_at([x, y + 1, z]);
+            below = __block_name_at([x, y - 1, z]);
+            if(
+                !__is_dangerous_name(foot) && !__is_dangerous_name(head) && !__is_dangerous_name(below)
+                && __is_passable_name(foot) && __is_passable_name(head) && __is_support_name(below),
+                result = {
+                    'ok' -> true,
+                    'pos' -> [x, y, z],
+                    'foot' -> foot,
+                    'head' -> head,
+                    'below' -> below
+                }
+            )
+        )
+    );
+    if(result, result, {'ok' -> false, 'reason' -> 'unsupported'})
+);
+
+__find_follow_step(remy_pos, owner_pos) -> (
+    [rx, ry, rz] = map(remy_pos, floor(_));
+    [ox, oy, oz] = map(owner_pos, floor(_));
+    start = [rx, ry, rz];
+    owner = [ox, oy, oz];
+    start_distance = __flat_distance(start, owner);
+    if(start_distance <= global_follow_min_distance,
+        return({'ok' -> true, 'reason' -> 'near_owner', 'next' -> null, 'distance' -> start_distance, 'visited' -> 1})
+    );
+
+    dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    frontier = [{'pos' -> start, 'first' -> null, 'depth' -> 0}];
+    visited = [__pos_key(start)];
+    best = null;
+    best_score = 1000000;
+    cursor = 0;
+    while(cursor < length(frontier) && cursor < global_follow_max_nodes,
+        node = frontier:cursor;
+        cursor += 1;
+        pos = node:'pos';
+        [cx, cy, cz] = pos;
+        loop(length(dirs),
+            d = dirs:_;
+            nx = cx + d:0;
+            nz = cz + d:1;
+            if(abs(nx - rx) <= global_follow_search_radius && abs(nz - rz) <= global_follow_search_radius,
+                candidate = __candidate_at(cy, nx, nz);
+                if(candidate:'ok',
+                    key = __pos_key(candidate:'pos');
+                    if(!first(visited, _ == key),
+                        visited += [key];
+                        first_step = if(node:'first', node:'first', candidate:'pos');
+                        depth = node:'depth' + 1;
+                        distance = __flat_distance(candidate:'pos', owner);
+                        score = distance + depth * 0.15;
+                        if(!best || score < best_score,
+                            best_score = score;
+                            best = {
+                                'ok' -> true,
+                                'reason' -> 'best_effort',
+                                'next' -> first_step,
+                                'target' -> candidate:'pos',
+                                'distance' -> distance,
+                                'depth' -> depth,
+                                'visited' -> length(visited)
+                            }
+                        );
+                        if(distance <= global_follow_min_distance,
+                            return({
+                                'ok' -> true,
+                                'reason' -> 'route',
+                                'next' -> first_step,
+                                'target' -> candidate:'pos',
+                                'distance' -> distance,
+                                'depth' -> depth,
+                                'visited' -> length(visited)
+                            })
+                        );
+                        if(depth < global_follow_search_radius,
+                            frontier += [{'pos' -> candidate:'pos', 'first' -> first_step, 'depth' -> depth}]
+                        )
+                    )
+                )
+            )
+        )
+    );
+    if(best && best:'distance' <= start_distance + 1.5,
+        return(best)
+    );
+    {'ok' -> false, 'reason' -> 'no_supported_route', 'distance' -> start_distance, 'visited' -> length(visited)}
+);
+
+__track_follow_progress(remy_pos) -> (
+    if(!global_follow_last_pos,
+        global_follow_last_pos = remy_pos;
+        return(true)
+    );
+    moved = __distance3(remy_pos, global_follow_last_pos);
+    if(moved < 0.03,
+        global_follow_stuck_ticks += 1,
+        global_follow_stuck_ticks = 0
+    );
+    global_follow_last_pos = remy_pos;
+    if(global_follow_stuck_ticks > global_follow_stuck_limit,
+        __stop_all('stuck');
+        return(false)
+    );
+    true
+);
 
 __follow_safety(remy_pos, owner_pos) -> (
     [rx, ry, rz] = remy_pos;
@@ -210,7 +359,10 @@ __cancel_goal(reason) -> (
     global_goal_generation += 1;
     global_active_goal = 'idle';
     global_follow_active = false;
-    global_follow_last_status = reason
+    global_follow_last_status = reason;
+    global_follow_last_route = null;
+    global_follow_last_pos = null;
+    global_follow_stuck_ticks = 0
 );
 
 __stop_all(reason) -> (
@@ -279,6 +431,8 @@ __state() -> (
         'followActive' -> global_follow_active,
         'followOwner' -> global_follow_owner_name,
         'followStatus' -> global_follow_last_status,
+        'followRoute' -> global_follow_last_route,
+        'followStuckTicks' -> global_follow_stuck_ticks,
         'writerFault' -> global_writer_fault
     };
     if(!p, return(base));
@@ -369,6 +523,9 @@ __follow_start(owner_name) -> (
     global_follow_active = true;
     global_follow_generation = my_generation;
     global_follow_last_status = 'following';
+    global_follow_last_route = null;
+    global_follow_last_pos = null;
+    global_follow_stuck_ticks = 0;
     spawn_result:'followActive' = true;
     spawn_result:'goalGeneration' = my_generation;
     spawn_result
@@ -410,26 +567,43 @@ __follow_tick(now_ms) -> (
     if(flat <= global_follow_min_distance,
         stop_result = __stop_remy();
         if(stop_result:'success',
-            global_follow_last_status = 'near_owner',
+            (
+                global_follow_last_status = 'near_owner';
+                global_follow_stuck_ticks = 0
+            ),
             __stop_all('near_stop_failed')
         );
+        return()
+    );
+    if(flat <= global_follow_resume_distance && global_follow_last_status == 'near_owner',
+        __stop_remy();
         return()
     );
     if(flat > global_follow_max_distance,
         __stop_all('owner_too_far');
         return()
     );
-    safety = __follow_safety(remy_pos, owner_pos);
-    if(!safety:'ok',
-        __stop_all('blocked_' + safety:'reason');
+    if(!__track_follow_progress(remy_pos),
         return()
     );
+    route = __find_follow_step(remy_pos, owner_pos);
+    global_follow_last_route = route;
+    if(!route:'ok',
+        __stop_all('blocked_' + route:'reason');
+        return()
+    );
+    if(!route:'next',
+        __stop_remy();
+        global_follow_last_status = 'near_owner';
+        return()
+    );
+    [tx, ty, tz] = route:'next';
     clear = __stop_remy();
     if(!clear:'success',
         __stop_all('clear_move_failed');
         return()
     );
-    look = __command_result(__run_player('look at ' + ox + ' ' + (oy + 1) + ' ' + oz));
+    look = __command_result(__run_player('look at ' + (tx + 0.5) + ' ' + (ty + 1) + ' ' + (tz + 0.5)));
     if(!look:'success',
         __stop_all('look_failed');
         return()
@@ -438,7 +612,7 @@ __follow_tick(now_ms) -> (
     if(move:'success',
         global_is_moving = true;
         global_move_expires_ms = now_ms + 500;
-        global_follow_last_status = 'following',
+        global_follow_last_status = 'following_' + route:'reason',
         __stop_all('move_failed')
     )
 );

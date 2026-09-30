@@ -11,7 +11,7 @@ Current scope:
 - Look in cardinal/up/down directions.
 - Move briefly, capped at 1000 ms, then stop automatically.
 - Owner-only in-game commands: `/remy_bridge follow`, `/remy_bridge stop`, `/remy_bridge status`, plus chat forms `remy follow`, `remy stop`, and `remy status`.
-- Follow as a first-pass tick-local goal with stop priority, bounded distance/vertical checks, and conservative hazard/cliff/obstacle stops.
+- Follow as a tick-local goal with stop priority, bounded distance/vertical checks, conservative hazard stops, and bounded local supported-neighbor navigation.
 - Offline blueprint planning for a deterministic `small_shelter` spec, including palette validation, material counts, ordered placement steps, reconciliation, and cancellation generation.
 - Stop immediately on request or when a command goes stale.
 - Avoid shared overwrite-style state files so Windows readers cannot block Carpet's delete-and-replace file writes.

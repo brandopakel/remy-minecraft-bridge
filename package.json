@@ -8,7 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "check": "node --check src/controller.mjs && node --check src/guardPrimitives.mjs && node --check src/blueprintPlanner.mjs && node --check tests/controller.test.mjs && node --check tests/guardPrimitives.test.mjs && node --check tests/blueprintPlanner.test.mjs",
+    "check": "node --check src/controller.mjs && node --check src/guardPrimitives.mjs && node --check src/blueprintPlanner.mjs && node --check src/followNavigation.mjs && node --check tests/controller.test.mjs && node --check tests/guardPrimitives.test.mjs && node --check tests/blueprintPlanner.test.mjs && node --check tests/followNavigation.test.mjs",
     "test": "node --test"
   }
 }

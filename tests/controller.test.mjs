@@ -351,7 +351,7 @@ test('runSmoke sends stop even when movement acknowledgment is lost', async () =
 
 test('Scarpet script exposes version and keeps the safety allowlist narrow', async () => {
   const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
-  assert.match(script, /global_bridge_version = '0\.1\.7'/);
+  assert.match(script, /global_bridge_version = '0\.1\.8'/);
   assert.match(script, /'bridgeVersion' -> global_bridge_version/);
   assert.match(script, /'worldPath' -> system_info\('world_path'\)/);
   assert.match(script, /__heartbeat\(reason\)/);
@@ -383,16 +383,27 @@ test('Scarpet script exposes version and keeps the safety allowlist narrow', asy
   assert.match(script, /generation != global_goal_generation/);
   assert.match(script, /__follow_tick\(now_ms\)/);
   assert.match(script, /global_follow_min_distance = 3\.0/);
+  assert.match(script, /global_follow_resume_distance = 4\.0/);
   assert.match(script, /global_follow_max_distance = 24\.0/);
   assert.match(script, /global_follow_max_vertical = 2\.0/);
+  assert.match(script, /global_follow_search_radius = 4/);
+  assert.match(script, /global_follow_max_nodes = 80/);
+  assert.match(script, /global_follow_max_drop = 2/);
+  assert.match(script, /global_follow_stuck_limit = 16/);
   assert.match(script, /__is_dangerous_name\(name\)/);
   assert.match(script, /'air'/);
   assert.match(script, /'cave_air'/);
   assert.match(script, /'lava'/);
+  assert.match(script, /'water'/);
   assert.match(script, /'minecraft:lava'/);
   assert.match(script, /'minecraft:powder_snow'/);
-  assert.match(script, /__follow_safety\(remy_pos, owner_pos\)/);
-  assert.match(script, /__run_player\('look at ' \+ ox \+ ' ' \+ \(oy \+ 1\) \+ ' ' \+ oz\)/);
+  assert.match(script, /__candidate_at\(base_y, x, z\)/);
+  assert.match(script, /__find_follow_step\(remy_pos, owner_pos\)/);
+  assert.match(script, /while\(cursor < length\(frontier\) && cursor < global_follow_max_nodes/);
+  assert.match(script, /__track_follow_progress\(remy_pos\)/);
+  assert.match(script, /route = __find_follow_step\(remy_pos, owner_pos\)/);
+  assert.match(script, /global_follow_last_route = route/);
+  assert.match(script, /__run_player\('look at ' \+ \(tx \+ 0\.5\) \+ ' ' \+ \(ty \+ 1\) \+ ' ' \+ \(tz \+ 0\.5\)\)/);
   assert.match(script, /__run_player\('move forward'\)/);
   assert.match(script, /allowed = \['spawn', 'status', 'look', 'move', 'stop'\]/);
   assert.match(script, /allowed = \['north', 'south', 'east', 'west', 'up', 'down'\]/);
@@ -442,16 +453,18 @@ test('Scarpet follow commands are owner-gated and cancellable', async () => {
 
 test('Scarpet follow stops instead of forcing through blocked or dangerous terrain', async () => {
   const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
-  assert.match(script, /__follow_safety\(remy_pos, owner_pos\)/);
+  assert.match(script, /__candidate_at\(base_y, x, z\)/);
+  assert.match(script, /__is_support_name\(name\)/);
+  assert.match(script, /levels = \[base_y, base_y \+ 1, base_y - 1, base_y - 2\]/);
   assert.match(script, /'reason' -> 'hazard'/);
-  assert.match(script, /'reason' -> 'blocked_feet'/);
-  assert.match(script, /'reason' -> 'blocked_head'/);
-  assert.match(script, /'reason' -> 'cliff'/);
-  assert.match(script, /__stop_all\('blocked_' \+ safety:'reason'\)/);
+  assert.match(script, /'reason' -> 'unsupported'/);
+  assert.match(script, /'reason' -> 'no_supported_route'/);
+  assert.match(script, /__stop_all\('blocked_' \+ route:'reason'\)/);
   assert.match(script, /__stop_all\('owner_too_far'\)/);
   assert.match(script, /__stop_all\('vertical_gap'\)/);
   assert.match(script, /__stop_all\('different_dimension'\)/);
   assert.match(script, /__stop_all\('owner_offline'\)/);
+  assert.match(script, /__stop_all\('stuck'\)/);
   assert.doesNotMatch(script, /query\([^)]*, 'path'\)/);
   assert.doesNotMatch(script, /teleport|set\(|place_item|harvest|attack continuous/);
 });

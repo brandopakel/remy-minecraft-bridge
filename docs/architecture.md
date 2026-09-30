@@ -37,21 +37,21 @@ The app rejects stale commands, acknowledges each accepted/rejected command, del
 
 ## Current Test Status
 
-Prepared:
+Prepared and verified locally:
 
-- Pinned Carpet release identified and downloaded separately for local installation.
-- Duplicate Homestead profile shell created without copied saves.
+- Pinned Carpet release identified and staged separately for local installation.
+- Duplicate Homestead profile created and registered separately from the original.
 - Carpet jar installed only in the duplicate profile.
-- Bridge source and controller created.
-- Node controller syntax check passes.
+- Copied test world is `New World - Remy LAN Test`.
+- Bridge source, controller, and tests created.
+- Node safety test suite passes.
+- Versioned Scarpet script `0.1.2` is deployed to the copied test world.
 
 Blocked before live proof:
 
-- The current Homestead game process is still running, so the test save has not been copied into the duplicate profile.
-- The user needs to Save and Quit before copying the test save and launching the duplicate profile.
+- The running Scarpet app has not reloaded the versioned script yet. The live state file is still missing `bridgeVersion`.
+- Run `/script load remy_bridge` in the duplicate profile's copied world to activate the deployed script.
 
 Unknown until launch:
 
-- Whether Homestead plus Carpet starts cleanly in the duplicate profile.
-- Whether CurseForge automatically recognizes the filesystem-level duplicate profile.
-- Whether Scarpet autoload works in this copied world without a manual `/script load remy_bridge`.
+- Whether the first live proof succeeds after reload: spawn, status, look, brief bounded move, explicit stop, final status.

@@ -351,7 +351,7 @@ test('runSmoke sends stop even when movement acknowledgment is lost', async () =
 
 test('Scarpet script exposes version and keeps the safety allowlist narrow', async () => {
   const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
-  assert.match(script, /global_bridge_version = '0\.1\.4'/);
+  assert.match(script, /global_bridge_version = '0\.1\.5'/);
   assert.match(script, /'bridgeVersion' -> global_bridge_version/);
   assert.match(script, /'worldPath' -> system_info\('world_path'\)/);
   assert.match(script, /__heartbeat\(reason\)/);
@@ -374,7 +374,7 @@ test('Scarpet script exposes version and keeps the safety allowlist narrow', asy
   assert.match(script, /expires_ms - created_ms > global_max_command_ttl_ms/);
   assert.match(script, /status = if\(detail:'success' == 0 \|\| detail:'error', 'failed', 'ok'\)/);
   assert.match(script, /'player ' \+ global_remy_name/);
-  assert.match(script, /execute as @a\[name!=' \+ global_remy_name \+ ',limit=1\] at @s run player/);
+  assert.match(script, /execute as @a\[name=!' \+ global_remy_name \+ ',limit=1\] at @s run player/);
   assert.doesNotMatch(script, /write_file\('state'/);
   assert.doesNotMatch(script, /write_file\('ack',/);
   assert.doesNotMatch(script, /write_file\('heartbeat',/);

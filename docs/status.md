@@ -19,12 +19,12 @@
 - The copied test world is `New World - Remy LAN Test`.
 - The bridge app loaded in the duplicate world and acknowledged file commands.
 - Versioned Scarpet script `0.1.2` was verified live by `bridgeVersion`.
-- Versioned Scarpet script `0.1.4` adds safer spawn source, fake-player-only control, lifecycle stop hooks, fresh heartbeat gating with 12 bounded heartbeat slots, lost-ack stop coverage, command-specific acks with controller-side pruning, and no tick `state.json` overwrite.
+- Versioned Scarpet script `0.1.5` adds safer spawn source, corrected selector syntax, fake-player-only control, lifecycle stop hooks, fresh heartbeat gating with 12 bounded heartbeat slots, lost-ack stop coverage, command-specific acks with controller-side pruning, and no tick `state.json` overwrite.
 - Local controller tests pass: 15/15.
 
 ## Current Blocker
 
-Live `0.1.2` bridge status worked in the copied world, then hit a Windows writer failure while Carpet removed `state.json`. The screenshot error was `io_exception` at the `write_file('state','json', __state())` line inside `__poll_remy_bridge`. Runtime proof is pending deployment/reload of `0.1.4`, then the approved spawn/read/look/brief-move/stop sequence.
+Live `0.1.2` bridge status worked in the copied world, then hit a Windows writer failure while Carpet removed `state.json`. The screenshot error was `io_exception` at the `write_file('state','json', __state())` line inside `__poll_remy_bridge`. Runtime proof is pending deployment/reload of `0.1.5`, then the approved spawn/read/look/brief-move/stop sequence.
 
 ## Live Proof Status
 
@@ -37,5 +37,5 @@ Completed:
 Pending:
 
 - Reload script in game.
-- Verify fresh `bridgeVersion: 0.1.4` in a bounded `heartbeat_*` slot file.
+- Verify fresh `bridgeVersion: 0.1.5` in a bounded `heartbeat_*` slot file.
 - Run approved live sequence: spawn, status, bounded surroundings/inventory read, look, brief move, stop, final status.

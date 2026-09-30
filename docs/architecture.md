@@ -47,12 +47,12 @@ Prepared and verified locally:
 - Copied test world is `New World - Remy LAN Test`.
 - Bridge source, controller, and tests created.
 - Node safety test suite passes.
-- Versioned Scarpet script `0.1.4` includes the safer spawn source fix, lifecycle stop hooks, a deployment heartbeat, fake-player-only control, and tighter command timing checks.
+- Versioned Scarpet script `0.1.5` includes the safer spawn source fix, corrected selector syntax, lifecycle stop hooks, a deployment heartbeat, fake-player-only control, and tighter command timing checks.
 
 Blocked before live proof:
 
-- Runtime `0.1.2` hit a Windows file writer failure while removing `state.json`. The fix is `0.1.4`, which removes tick `state.json` writes and uses command-specific ack files plus bounded heartbeat slots.
-- Run `/script load remy_bridge` in the duplicate profile's copied world after deploying `0.1.4`, then verify a fresh `heartbeat_*` file before live control.
+- Runtime `0.1.2` hit a Windows file writer failure while removing `state.json`. The fix is `0.1.5`, which removes tick `state.json` writes and uses command-specific ack files plus bounded heartbeat slots.
+- Run `/script load remy_bridge` in the duplicate profile's copied world after deploying `0.1.5`, then verify a fresh `heartbeat_*` file before live control.
 
 Unknown until launch:
 

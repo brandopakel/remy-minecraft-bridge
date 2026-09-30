@@ -351,7 +351,7 @@ test('runSmoke sends stop even when movement acknowledgment is lost', async () =
 
 test('Scarpet script exposes version and keeps the safety allowlist narrow', async () => {
   const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
-  assert.match(script, /global_bridge_version = '0\.1\.6'/);
+  assert.match(script, /global_bridge_version = '0\.1\.7'/);
   assert.match(script, /'bridgeVersion' -> global_bridge_version/);
   assert.match(script, /'worldPath' -> system_info\('world_path'\)/);
   assert.match(script, /__heartbeat\(reason\)/);
@@ -386,6 +386,9 @@ test('Scarpet script exposes version and keeps the safety allowlist narrow', asy
   assert.match(script, /global_follow_max_distance = 24\.0/);
   assert.match(script, /global_follow_max_vertical = 2\.0/);
   assert.match(script, /__is_dangerous_name\(name\)/);
+  assert.match(script, /'air'/);
+  assert.match(script, /'cave_air'/);
+  assert.match(script, /'lava'/);
   assert.match(script, /'minecraft:lava'/);
   assert.match(script, /'minecraft:powder_snow'/);
   assert.match(script, /__follow_safety\(remy_pos, owner_pos\)/);

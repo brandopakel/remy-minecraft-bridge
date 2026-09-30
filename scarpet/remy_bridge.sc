@@ -11,7 +11,7 @@ __config() -> {
 };
 
 global_remy_name = 'remy';
-global_bridge_version = '0.1.6';
+global_bridge_version = '0.1.7';
 global_max_command_ttl_ms = 10000;
 global_clock_skew_ms = 10000;
 global_last_command_id = null;
@@ -139,25 +139,42 @@ __block_name_at(where) -> str(block(where));
 __is_name_in(value, names) -> bool(first(names, _ == value));
 
 __is_passable_name(name) -> __is_name_in(name, [
+    'air',
     'minecraft:air',
+    'cave_air',
     'minecraft:cave_air',
+    'void_air',
     'minecraft:void_air',
+    'grass',
     'minecraft:grass',
+    'tall_grass',
     'minecraft:tall_grass',
+    'fern',
     'minecraft:fern',
+    'large_fern',
     'minecraft:large_fern',
+    'snow',
     'minecraft:snow'
 ]);
 
 __is_dangerous_name(name) -> __is_name_in(name, [
+    'lava',
     'minecraft:lava',
+    'fire',
     'minecraft:fire',
+    'soul_fire',
     'minecraft:soul_fire',
+    'magma_block',
     'minecraft:magma_block',
+    'cactus',
     'minecraft:cactus',
+    'campfire',
     'minecraft:campfire',
+    'soul_campfire',
     'minecraft:soul_campfire',
+    'sweet_berry_bush',
     'minecraft:sweet_berry_bush',
+    'powder_snow',
     'minecraft:powder_snow'
 ]);
 

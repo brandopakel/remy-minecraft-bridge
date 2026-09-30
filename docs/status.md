@@ -52,11 +52,11 @@ Remaining:
 
 ## Follow Milestone In Progress
 
-Local `0.1.6` changes add owner-only `/remy_bridge follow`, `/remy_bridge stop`, `/remy_bridge status`, plus exact chat commands `remy follow`, `remy stop`, and `remy status`. Follow is implemented as a single tick-local goal with generation-based stop cancellation, simple forward steering toward the owner, and conservative stops for obstacles, cliffs, hazards, dimension mismatch, owner logout, or non-fake Remy.
+Local `0.1.7` changes add owner-only `/remy_bridge follow`, `/remy_bridge stop`, `/remy_bridge status`, plus exact chat commands `remy follow`, `remy stop`, and `remy status`. Follow is implemented as a single tick-local goal with generation-based stop cancellation, simple forward steering toward the owner, and conservative stops for obstacles, cliffs, hazards, dimension mismatch, owner logout, or non-fake Remy.
 
-Local tests pass: 18/18. The added follow checks cover owner-gated cancellable commands, stop-before-player-stop sequencing, and blocked/hazard/cliff follow stops. The `0.1.6` script has been deployed to the copied test world, but runtime follow proof is still pending a `/script load remy_bridge` reload and fresh `0.1.6` heartbeat.
+Local tests pass: 35/35. The added follow checks cover owner-gated cancellable commands, stop-before-player-stop sequencing, and blocked/hazard/cliff follow stops. The `0.1.7` script has been deployed to the copied test world, but runtime follow proof is still pending a fresh `0.1.7` heartbeat.
 
-Latest read-only heartbeat check found the copied world ticking on `0.1.5`, so the deployed `0.1.6` file is not active yet.
+Latest live `0.1.6` follow attempt recognized owner chat (`remy follow on`) but immediately stopped with `followStatus: blocked_blocked_feet`. Diagnosis: Scarpet reports vanilla block names as `air`/`stone` in observed state, while the `0.1.6` passable/hazard lists only matched namespaced ids such as `minecraft:air`. `0.1.7` accepts both forms.
 
 ## Guard/Fight Primitive Work
 
@@ -90,7 +90,7 @@ This is not live construction yet. It does not place, mine, overwrite, or consum
 
 - Local branch: `guard-fight-primitives`.
 - Last full local validation: `npm test` passed 35/35 and `npm run check` passed.
-- Deployed duplicate-world script on disk is `0.1.6`, but the latest observed live heartbeat was still `0.1.5`.
-- Follow runtime proof depends on a fresh `0.1.6` heartbeat before any further live movement test.
+- Deployed duplicate-world script on disk is `0.1.7`.
+- Follow runtime proof depends on a fresh `0.1.7` heartbeat before any further live movement test.
 - Guard/fight and blueprint planner work is local-only and has not been deployed to Minecraft.
 - No remote push has been made for this batch.

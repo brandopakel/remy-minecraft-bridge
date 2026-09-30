@@ -1,4 +1,4 @@
-# Remy Minecraft Bridge
+# remy-minecraft-bridge
 
 This is a small local proof-of-control bridge for testing `remy` as a separate teammate in a copied Homestead Minecraft world.
 

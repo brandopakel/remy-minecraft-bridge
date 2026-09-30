@@ -28,6 +28,10 @@ The Scarpet app allowlist is intentionally tiny:
 
 The app does not expose Carpet actions for `attack`, `use`, `drop`, `dropStack`, `swapHands`, `hotbar`, `kill`, `shadow`, mount/sneak/sprint toggles, block setting, block destruction, or inventory mutation.
 
+In-game commands are owner-gated through a local, uncommitted `owner.json` file in `scripts/remy_bridge.data`. The Scarpet app registers `/remy_bridge follow`, `/remy_bridge stop`, and `/remy_bridge status`, and also consumes exact owner chat messages `remy follow`, `remy stop`, and `remy status`. Non-owner chat is ignored.
+
+Follow is a single active goal managed inside the tick loop. A stop command increments the goal generation and cancels the active goal before issuing `/player remy stop`, so stale or queued work cannot restart movement after a stop. The current follow behavior is intentionally simple steering: look at the owner, move forward in short pulses, and stop on distance, vertical gap, obstacle, cliff, dimension mismatch, owner logout, or hazards such as lava, fire, cactus, magma, campfires, berry bushes, or powder snow. It does not use fake-player pathfinding because fake players are server players, not mobs with navigation.
+
 Every command carries:
 
 - `id`: unique request ID.
@@ -56,4 +60,14 @@ Blocked before live proof:
 
 Unknown until launch:
 
-- Whether the first live proof succeeds after reload: spawn, status, look, brief bounded move, explicit stop, final status.
+- Whether the `0.1.6` follow milestone succeeds after reload: owner-only slash/chat commands, follow start, bounded local steering, and reliable stop.
+
+## Roadmap Semantics
+
+Future combat should avoid `/player remy attack continuous` because that command can mine blocks and is not an entity-combat loop. Combat experiments should use deliberate attacks with cooldowns and explicit targets.
+
+Future building has two different modes that must be labeled honestly. Scarpet direct placement helpers can construct or set blocks without consuming Remy's inventory, while survival-realistic building should use held inventory and fake-player actions. The same distinction applies to harvesting: direct destruction is not normal timed mining.
+
+Future crafting and automation should treat `recipe_data` as recipe inspection, not a universal executor for custom mod machines or GUIs. Modded custom GUI interaction may need separate, explicit support.
+
+Fake players can disconnect on death. Higher-level goals must treat death/disconnect as a stop-and-replan event.

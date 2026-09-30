@@ -1,18 +1,34 @@
 __config() -> {
     'scope' -> 'global',
-    'stay_loaded' -> true
+    'stay_loaded' -> true,
+    'command_permission' -> _(p) -> __is_owner(p),
+    'commands' -> {
+        '' -> _() -> __command(),
+        'follow' -> _() -> follow(),
+        'stop' -> _() -> stop(),
+        'status' -> _() -> status()
+    }
 };
 
 global_remy_name = 'remy';
-global_bridge_version = '0.1.5';
+global_bridge_version = '0.1.6';
 global_max_command_ttl_ms = 10000;
 global_clock_skew_ms = 10000;
 global_last_command_id = null;
 global_next_poll_tick = 0;
 global_next_heartbeat_tick = 0;
 global_heartbeat_slots = 12;
+global_follow_min_distance = 3.0;
+global_follow_max_distance = 24.0;
+global_follow_max_vertical = 2.0;
 global_move_expires_ms = 0;
 global_is_moving = false;
+global_follow_active = false;
+global_follow_owner_name = null;
+global_follow_last_status = 'idle';
+global_active_goal = 'idle';
+global_goal_generation = 0;
+global_follow_generation = 0;
 global_pending_ack = null;
 global_writer_fault = null;
 
@@ -27,6 +43,31 @@ __command_result(result) -> {
 __remy_player_type(p) -> if(p, query(p, 'player_type'), null);
 
 __remy_is_fake(p) -> p && __remy_player_type(p) == 'fake';
+
+__owner_name() -> (
+    cfg = read_file('owner', 'json');
+    if(cfg && cfg:'ownerName', str(cfg:'ownerName'), null)
+);
+
+__is_owner(p) -> (
+    owner_name = __owner_name();
+    p && owner_name && query(p, 'command_name') == owner_name
+);
+
+__owner_check(p) -> (
+    owner_name = __owner_name();
+    if(!owner_name,
+        return({'success' -> 0, 'error' -> 'owner is not configured'})
+    );
+    if(!p,
+        return({'success' -> 0, 'error' -> 'command requires a player'})
+    );
+    if(!__is_owner(p),
+        caller = query(p, 'command_name');
+        return({'success' -> 0, 'error' -> 'only the configured owner can command remy', 'caller' -> caller})
+    );
+    {'success' -> 1, 'ownerName' -> owner_name}
+);
 
 __write_json_safe(file_name, payload) -> (
     ok = try(
@@ -93,6 +134,73 @@ __enforce_move_expiry(now_ms) -> (
     )
 );
 
+__block_name_at(where) -> str(block(where));
+
+__is_name_in(value, names) -> bool(first(names, _ == value));
+
+__is_passable_name(name) -> __is_name_in(name, [
+    'minecraft:air',
+    'minecraft:cave_air',
+    'minecraft:void_air',
+    'minecraft:grass',
+    'minecraft:tall_grass',
+    'minecraft:fern',
+    'minecraft:large_fern',
+    'minecraft:snow'
+]);
+
+__is_dangerous_name(name) -> __is_name_in(name, [
+    'minecraft:lava',
+    'minecraft:fire',
+    'minecraft:soul_fire',
+    'minecraft:magma_block',
+    'minecraft:cactus',
+    'minecraft:campfire',
+    'minecraft:soul_campfire',
+    'minecraft:sweet_berry_bush',
+    'minecraft:powder_snow'
+]);
+
+__follow_safety(remy_pos, owner_pos) -> (
+    [rx, ry, rz] = remy_pos;
+    [ox, oy, oz] = owner_pos;
+    dx = ox - rx;
+    dz = oz - rz;
+    flat = sqrt(dx * dx + dz * dz);
+    if(flat < 0.001, return({'ok' -> true, 'reason' -> 'same_block'}));
+    nx = floor(rx + dx / flat * 1.2);
+    ny = floor(ry);
+    nz = floor(rz + dz / flat * 1.2);
+    foot = __block_name_at([nx, ny, nz]);
+    head = __block_name_at([nx, ny + 1, nz]);
+    below = __block_name_at([nx, ny - 1, nz]);
+    if(__is_dangerous_name(foot) || __is_dangerous_name(head) || __is_dangerous_name(below),
+        return({'ok' -> false, 'reason' -> 'hazard', 'foot' -> foot, 'head' -> head, 'below' -> below, 'pos' -> [nx, ny, nz]})
+    );
+    if(!__is_passable_name(foot),
+        return({'ok' -> false, 'reason' -> 'blocked_feet', 'block' -> foot, 'pos' -> [nx, ny, nz]})
+    );
+    if(!__is_passable_name(head),
+        return({'ok' -> false, 'reason' -> 'blocked_head', 'block' -> head, 'pos' -> [nx, ny + 1, nz]})
+    );
+    if(__is_passable_name(below),
+        return({'ok' -> false, 'reason' -> 'cliff', 'block' -> below, 'pos' -> [nx, ny - 1, nz]})
+    );
+    {'ok' -> true, 'next' -> [nx, ny, nz], 'foot' -> foot, 'head' -> head, 'below' -> below}
+);
+
+__cancel_goal(reason) -> (
+    global_goal_generation += 1;
+    global_active_goal = 'idle';
+    global_follow_active = false;
+    global_follow_last_status = reason
+);
+
+__stop_all(reason) -> (
+    __cancel_goal(reason);
+    __stop_remy()
+);
+
 __inventory_state(p) -> (
     inv = [];
     size = inventory_size(p);
@@ -149,6 +257,11 @@ __state() -> (
         'online' -> bool(p),
         'moving' -> global_is_moving,
         'moveExpiresMs' -> global_move_expires_ms,
+        'activeGoal' -> global_active_goal,
+        'goalGeneration' -> global_goal_generation,
+        'followActive' -> global_follow_active,
+        'followOwner' -> global_follow_owner_name,
+        'followStatus' -> global_follow_last_status,
         'writerFault' -> global_writer_fault
     };
     if(!p, return(base));
@@ -205,6 +318,114 @@ __spawn() -> (
     __command_result(run('execute as @a[name=!' + global_remy_name + ',limit=1] at @s run player ' + global_remy_name + ' spawn'))
 );
 
+__spawn_at_owner(owner_name) -> (
+    p = player(global_remy_name);
+    if(p,
+        if(!__remy_is_fake(p),
+            return({'success' -> 0, 'error' -> 'refusing to use existing non-fake player named remy', 'playerType' -> __remy_player_type(p)})
+        );
+        return({'success' -> 1, 'alreadyOnline' -> true})
+    );
+    __command_result(run('execute as ' + owner_name + ' at @s run player ' + global_remy_name + ' spawn'))
+);
+
+__follow_start(owner_name) -> (
+    owner = player(owner_name);
+    if(!owner,
+        return({'success' -> 0, 'error' -> 'owner is not online', 'owner' -> owner_name})
+    );
+    global_goal_generation += 1;
+    my_generation = global_goal_generation;
+    pre_stop = __stop_remy();
+    if(!pre_stop:'success',
+        __cancel_goal('follow_pre_stop_failed');
+        return({'success' -> 0, 'error' -> 'pre-follow stop failed', 'stopResult' -> pre_stop})
+    );
+    spawn_result = __spawn_at_owner(owner_name);
+    if(spawn_result:'success' == 0 || spawn_result:'error',
+        __cancel_goal('spawn_failed');
+        global_follow_last_status = 'spawn_failed';
+        return(spawn_result)
+    );
+    global_active_goal = 'follow';
+    global_follow_owner_name = owner_name;
+    global_follow_active = true;
+    global_follow_generation = my_generation;
+    global_follow_last_status = 'following';
+    spawn_result:'followActive' = true;
+    spawn_result:'goalGeneration' = my_generation;
+    spawn_result
+);
+
+__follow_tick(now_ms) -> (
+    if(!global_follow_active, return());
+    generation = global_follow_generation;
+    if(global_active_goal != 'follow' || generation != global_goal_generation,
+        global_follow_active = false;
+        return()
+    );
+    owner = player(global_follow_owner_name);
+    remy = player(global_remy_name);
+    if(!owner,
+        __stop_all('owner_offline');
+        return()
+    );
+    if(!__remy_is_fake(remy),
+        __stop_all('remy_not_fake');
+        return()
+    );
+    if(query(owner, 'dimension') != query(remy, 'dimension'),
+        __stop_all('different_dimension');
+        return()
+    );
+    owner_pos = query(owner, 'pos');
+    remy_pos = query(remy, 'pos');
+    [ox, oy, oz] = owner_pos;
+    [rx, ry, rz] = remy_pos;
+    dx = ox - rx;
+    dy = oy - ry;
+    dz = oz - rz;
+    flat = sqrt(dx * dx + dz * dz);
+    if(abs(dy) > global_follow_max_vertical,
+        __stop_all('vertical_gap');
+        return()
+    );
+    if(flat <= global_follow_min_distance,
+        stop_result = __stop_remy();
+        if(stop_result:'success',
+            global_follow_last_status = 'near_owner',
+            __stop_all('near_stop_failed')
+        );
+        return()
+    );
+    if(flat > global_follow_max_distance,
+        __stop_all('owner_too_far');
+        return()
+    );
+    safety = __follow_safety(remy_pos, owner_pos);
+    if(!safety:'ok',
+        __stop_all('blocked_' + safety:'reason');
+        return()
+    );
+    clear = __stop_remy();
+    if(!clear:'success',
+        __stop_all('clear_move_failed');
+        return()
+    );
+    look = __command_result(__run_player('look at ' + ox + ' ' + (oy + 1) + ' ' + oz));
+    if(!look:'success',
+        __stop_all('look_failed');
+        return()
+    );
+    move = __command_result(__run_player('move forward'));
+    if(move:'success',
+        global_is_moving = true;
+        global_move_expires_ms = now_ms + 500;
+        global_follow_last_status = 'following',
+        __stop_all('move_failed')
+    )
+);
+
 __look(cmd) -> (
     direction = cmd:'direction';
     allowed = ['north', 'south', 'east', 'west', 'up', 'down'];
@@ -229,6 +450,7 @@ __move(cmd, now_ms) -> (
         return({'success' -> 0, 'error' -> 'remy must be an online fake player before movement', 'playerType' -> __remy_player_type(p)})
     );
     duration_ms = min(max(number(cmd:'durationMs'), 1), 1000);
+    __cancel_goal('manual_move');
     pre_stop = __stop_remy();
     if(!pre_stop:'success',
         return({'success' -> 0, 'error' -> 'pre-move stop failed', 'stopResult' -> pre_stop})
@@ -274,7 +496,7 @@ __execute(cmd, now_ms) -> (
         action == 'status', {'ok' -> true},
         action == 'look', __look(cmd),
         action == 'move', __move(cmd, now_ms),
-        action == 'stop', __stop_remy()
+        action == 'stop', __stop_all('manual_stop')
     );
     delete_file('command', 'json');
     status = if(detail:'success' == 0 || detail:'error', 'failed', 'ok');
@@ -284,6 +506,7 @@ __execute(cmd, now_ms) -> (
 __poll_remy_bridge() -> (
     now_ms = unix_time();
     __enforce_move_expiry(now_ms);
+    __follow_tick(now_ms);
     __flush_pending_ack();
     cmd = read_file('command', 'json');
     if(cmd,
@@ -300,7 +523,58 @@ __on_tick() -> (
     __poll_remy_bridge()
 );
 
+__command() -> 'remy_bridge commands: /remy_bridge follow, /remy_bridge stop, /remy_bridge status';
+
+__follow_command(p) -> (
+    auth = __owner_check(p);
+    if(!auth:'success', return(auth:'error'));
+    result = __follow_start(auth:'ownerName');
+    if(result:'success' == 0 || result:'error',
+        'remy follow failed: ' + result:'error',
+        'remy follow on'
+    )
+);
+
+__stop_command(p) -> (
+    auth = __owner_check(p);
+    if(!auth:'success', return(auth:'error'));
+    result = __stop_all('owner_stop');
+    if(result:'success' == 0 || result:'error',
+        'remy stop failed: ' + result:'error',
+        'remy stopped'
+    )
+);
+
+__status_command(p) -> (
+    auth = __owner_check(p);
+    if(!auth:'success', return(auth:'error'));
+    __state()
+);
+
+follow() -> __follow_command(player());
+
+stop() -> __stop_command(player());
+
+status() -> __status_command(player());
+
+__on_player_message(p, message) -> (
+    if(!__is_owner(p), return());
+    if(message == 'remy follow',
+        print(p, __follow_command(p));
+        return('cancel')
+    );
+    if(message == 'remy stop',
+        print(p, __stop_command(p));
+        return('cancel')
+    );
+    if(message == 'remy status',
+        print(p, __status_command(p));
+        return('cancel')
+    )
+);
+
 __on_start() -> (
+    __cancel_goal('reload');
     __stop_remy();
     __heartbeat('start')
 );

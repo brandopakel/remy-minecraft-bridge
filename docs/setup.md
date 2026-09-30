@@ -17,13 +17,21 @@
 4. Copy only the existing Remy LAN test save into the duplicate profile's `saves` folder.
 5. Copy `scarpet/remy_bridge.sc` into the copied save's `scripts` folder.
 6. Launch the duplicate profile and open the copied save.
-7. If the app does not autoload, run this in-game once:
+7. Create a local owner file in the copied world's app data folder. This file is not committed:
+
+   ```json
+   {
+     "ownerName": "<your Minecraft name>"
+   }
+   ```
+
+8. If the app does not autoload, run this in-game once:
 
    ```text
    /script load remy_bridge
    ```
 
-8. From this repository, run:
+9. From this repository, run:
 
    ```powershell
    node .\src\controller.mjs --world "<copied-save-path>" smoke
@@ -42,3 +50,18 @@ node .\src\controller.mjs --world "<copied-save-path>" stop
 ```
 
 Movement duration is capped at 1000 ms in both the controller and the Scarpet app.
+
+## In-Game Commands
+
+These commands are accepted only from the configured owner player:
+
+```text
+/remy_bridge follow
+/remy_bridge stop
+/remy_bridge status
+remy follow
+remy stop
+remy status
+```
+
+The plain chat forms are consumed by the Scarpet app when they match exactly. The follow goal uses simple local steering and stops rather than mining, placing, teleporting, or forcing through hazards when blocked.

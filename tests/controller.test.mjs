@@ -351,10 +351,22 @@ test('runSmoke sends stop even when movement acknowledgment is lost', async () =
 
 test('Scarpet script exposes version and keeps the safety allowlist narrow', async () => {
   const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
-  assert.match(script, /global_bridge_version = '0\.1\.5'/);
+  assert.match(script, /global_bridge_version = '0\.1\.6'/);
   assert.match(script, /'bridgeVersion' -> global_bridge_version/);
   assert.match(script, /'worldPath' -> system_info\('world_path'\)/);
   assert.match(script, /__heartbeat\(reason\)/);
+  assert.match(script, /'command_permission' -> _\(p\) -> __is_owner\(p\)/);
+  assert.match(script, /'commands' -> \{/);
+  assert.match(script, /'follow' -> _\(\) -> follow\(\)/);
+  assert.match(script, /'stop' -> _\(\) -> stop\(\)/);
+  assert.match(script, /'status' -> _\(\) -> status\(\)/);
+  assert.match(script, /__on_player_message\(p, message\)/);
+  assert.match(script, /message == 'remy follow'/);
+  assert.match(script, /message == 'remy stop'/);
+  assert.match(script, /message == 'remy status'/);
+  assert.match(script, /return\('cancel'\)/);
+  assert.match(script, /read_file\('owner', 'json'\)/);
+  assert.match(script, /query\(p, 'command_name'\) == owner_name/);
   assert.match(script, /try\(/);
   assert.match(script, /global_heartbeat_slots = 12/);
   assert.match(script, /floor\(tick_time\(\) \/ 200\) % global_heartbeat_slots/);
@@ -365,6 +377,20 @@ test('Scarpet script exposes version and keeps the safety allowlist narrow', asy
   assert.match(script, /query\(p, 'player_type'\)/);
   assert.match(script, /player_type != 'fake'/);
   assert.match(script, /in_dimension\(p, __surroundings\(center\)\)/);
+  assert.match(script, /global_goal_generation \+= 1/);
+  assert.match(script, /global_active_goal = 'idle'/);
+  assert.match(script, /global_active_goal = 'follow'/);
+  assert.match(script, /generation != global_goal_generation/);
+  assert.match(script, /__follow_tick\(now_ms\)/);
+  assert.match(script, /global_follow_min_distance = 3\.0/);
+  assert.match(script, /global_follow_max_distance = 24\.0/);
+  assert.match(script, /global_follow_max_vertical = 2\.0/);
+  assert.match(script, /__is_dangerous_name\(name\)/);
+  assert.match(script, /'minecraft:lava'/);
+  assert.match(script, /'minecraft:powder_snow'/);
+  assert.match(script, /__follow_safety\(remy_pos, owner_pos\)/);
+  assert.match(script, /__run_player\('look at ' \+ ox \+ ' ' \+ \(oy \+ 1\) \+ ' ' \+ oz\)/);
+  assert.match(script, /__run_player\('move forward'\)/);
   assert.match(script, /allowed = \['spawn', 'status', 'look', 'move', 'stop'\]/);
   assert.match(script, /allowed = \['north', 'south', 'east', 'west', 'up', 'down'\]/);
   assert.match(script, /allowed = \['forward', 'backward', 'left', 'right'\]/);
@@ -379,10 +405,50 @@ test('Scarpet script exposes version and keeps the safety allowlist narrow', asy
   assert.match(script, /status = if\(detail:'success' == 0 \|\| detail:'error', 'failed', 'ok'\)/);
   assert.match(script, /'player ' \+ global_remy_name/);
   assert.match(script, /execute as @a\[name=!' \+ global_remy_name \+ ',limit=1\] at @s run player/);
+  assert.match(script, /execute as ' \+ owner_name \+ ' at @s run player/);
   assert.doesNotMatch(script, /name!=/);
+  assert.doesNotMatch(script, /xxBP00/);
+  assert.doesNotMatch(script, /__on_player_command/);
+  assert.doesNotMatch(script, /query\([^)]*, 'path'\)/);
+  assert.doesNotMatch(script, /attack continuous/);
   assert.doesNotMatch(script, /write_file\('state'/);
   assert.doesNotMatch(script, /write_file\('ack',/);
   assert.doesNotMatch(script, /write_file\('heartbeat',/);
   assert.doesNotMatch(script, /spawn in survival/);
   assert.doesNotMatch(script, /__run_player\('(attack|drop|use|hotbar|mine|place)/);
+});
+
+test('Scarpet follow commands are owner-gated and cancellable', async () => {
+  const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
+  const stopAllIndex = script.indexOf("__stop_all(reason) ->");
+  const cancelIndex = script.indexOf("__cancel_goal(reason);", stopAllIndex);
+  const stopIndex = script.indexOf("__stop_remy()", stopAllIndex);
+  assert.ok(stopAllIndex > -1, 'stop-all helper must exist');
+  assert.ok(cancelIndex > stopAllIndex && cancelIndex < stopIndex, 'stop must cancel active goal before issuing /player stop');
+
+  assert.match(script, /'command_permission' -> _\(p\) -> __is_owner\(p\)/);
+  assert.match(script, /__follow_command\(p\)/);
+  assert.match(script, /__stop_command\(p\)/);
+  assert.match(script, /__status_command\(p\)/);
+  assert.match(script, /if\(!__is_owner\(p\), return\(\)\)/);
+  assert.match(script, /print\(p, __follow_command\(p\)\)/);
+  assert.match(script, /print\(p, __stop_command\(p\)\)/);
+  assert.match(script, /print\(p, __status_command\(p\)\)/);
+  assert.doesNotMatch(script, /__on_player_command/);
+});
+
+test('Scarpet follow stops instead of forcing through blocked or dangerous terrain', async () => {
+  const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
+  assert.match(script, /__follow_safety\(remy_pos, owner_pos\)/);
+  assert.match(script, /'reason' -> 'hazard'/);
+  assert.match(script, /'reason' -> 'blocked_feet'/);
+  assert.match(script, /'reason' -> 'blocked_head'/);
+  assert.match(script, /'reason' -> 'cliff'/);
+  assert.match(script, /__stop_all\('blocked_' \+ safety:'reason'\)/);
+  assert.match(script, /__stop_all\('owner_too_far'\)/);
+  assert.match(script, /__stop_all\('vertical_gap'\)/);
+  assert.match(script, /__stop_all\('different_dimension'\)/);
+  assert.match(script, /__stop_all\('owner_offline'\)/);
+  assert.doesNotMatch(script, /query\([^)]*, 'path'\)/);
+  assert.doesNotMatch(script, /teleport|set\(|place_item|harvest|attack continuous/);
 });

@@ -17,14 +17,14 @@
 - CurseForge display name observed for the duplicate: `Homestead - A Cozy Survival Experience (1)`.
 - Carpet is installed only in that duplicate profile.
 - The copied test world is `New World - Remy LAN Test`.
-- The bridge app loaded in the duplicate world and writes state files.
+- The bridge app loaded in the duplicate world and acknowledged file commands.
 - Versioned Scarpet script `0.1.2` was verified live by `bridgeVersion`.
-- Versioned Scarpet script `0.1.4` adds safer spawn source, fake-player-only control, lifecycle stop hooks, fresh heartbeat gating, and lost-ack stop coverage.
-- Local controller tests pass: 9/9.
+- Versioned Scarpet script `0.1.4` adds safer spawn source, fake-player-only control, lifecycle stop hooks, fresh heartbeat gating with 12 bounded heartbeat slots, lost-ack stop coverage, command-specific acks, and no tick `state.json` overwrite.
+- Local controller tests pass: 15/15.
 
 ## Current Blocker
 
-Live `0.1.2` bridge status works in the copied world. Runtime proof is pending deployment/reload of `0.1.4`, then the approved spawn/read/look/brief-move/stop sequence.
+Live `0.1.2` bridge status worked in the copied world, then hit a Windows writer failure while Carpet removed `state.json`. The screenshot error was `io_exception` at the `write_file('state','json', __state())` line inside `__poll_remy_bridge`. Runtime proof is pending deployment/reload of `0.1.4`, then the approved spawn/read/look/brief-move/stop sequence.
 
 ## Live Proof Status
 
@@ -32,10 +32,10 @@ Completed:
 
 - Confirmed the bridge can acknowledge file commands in the copied world.
 - Confirmed stale initial script failed spawn due Carpet command syntax and fixed the source.
-- Confirmed safety tests for action allowlist, command TTL bounds, path confinement, stale/malformed acknowledgments, bounded movement, explicit stop sequencing, and Scarpet allowlist/version checks.
+- Confirmed safety tests for action allowlist, command TTL bounds, path confinement, stale/malformed acknowledgments, command-specific ack replay defense, heartbeat version/world/age gating, bounded movement, lost movement ack stop, explicit stop sequencing, and Scarpet allowlist/version checks.
 
 Pending:
 
 - Reload script in game.
-- Verify fresh `bridgeVersion: 0.1.4` in `heartbeat.json` and `state.json`.
+- Verify fresh `bridgeVersion: 0.1.4` in a bounded `heartbeat_*` slot file.
 - Run approved live sequence: spawn, status, bounded surroundings/inventory read, look, brief move, stop, final status.

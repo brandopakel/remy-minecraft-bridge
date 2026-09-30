@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,6 +38,32 @@ export function bridgeDir(worldPath, options = {}) {
 
 export async function readBridgeJson(worldPath, fileName, options = {}) {
   return readJsonIfPresent(path.join(bridgeDir(worldPath, options), fileName));
+}
+
+export async function readLatestBridgeJson(worldPath, prefix, options = {}) {
+  const dir = bridgeDir(worldPath, options);
+  let entries = [];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+
+  const candidates = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.startsWith(`${prefix}_`) || !entry.name.endsWith('.json')) continue;
+    const file = path.join(dir, entry.name);
+    const value = await readJsonIfPresent(file);
+    if (!value) continue;
+    const fileStat = await stat(file);
+    candidates.push({
+      value,
+      sortTime: Number(value.unixMs) || fileStat.mtimeMs,
+    });
+  }
+  candidates.sort((a, b) => b.sortTime - a.sortTime);
+  return candidates[0]?.value ?? null;
 }
 
 export function buildCommand(action, fields = {}, options = {}) {
@@ -120,7 +146,7 @@ export function assertFreshHeartbeat(heartbeat, worldPath, options = {}) {
 }
 
 export async function requireFreshHeartbeat(worldPath, options = {}) {
-  return assertFreshHeartbeat(await readBridgeJson(worldPath, 'heartbeat.json', options), worldPath, options);
+  return assertFreshHeartbeat(await readLatestBridgeJson(worldPath, 'heartbeat', options), worldPath, options);
 }
 
 export async function readJsonIfPresent(file) {
@@ -142,11 +168,16 @@ export async function writeJsonAtomic(file, value) {
 export async function sendCommand(worldPath, action, fields = {}, options = {}) {
   const dir = bridgeDir(worldPath, options);
   const commandPath = path.join(dir, 'command.json');
-  const ackPath = path.join(dir, 'ack.json');
   const command = buildCommand(action, fields, options);
+  const ackPath = path.join(dir, `ack_${command.id}.json`);
 
   await mkdir(dir, { recursive: true });
-  await rm(ackPath, { force: true });
+  try {
+    await stat(ackPath);
+    throw new Error(`Refusing to reuse existing ack file for command id ${command.id}`);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   await writeJsonAtomic(commandPath, command);
 
   const timeoutMs = options.timeoutMs ?? 10000;

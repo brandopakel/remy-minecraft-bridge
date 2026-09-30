@@ -11,6 +11,7 @@ import {
   expectedBridgeVersion,
   maxCommandTtlMs,
   readJsonIfPresent,
+  readLatestBridgeJson,
   resolveWorldPath,
   runSmoke,
   sendCommand,
@@ -26,7 +27,7 @@ async function makeWorld() {
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function writeHeartbeat(world, fields = {}) {
-  const heartbeatPath = path.join(bridgeDir(world), 'heartbeat.json');
+  const heartbeatPath = path.join(bridgeDir(world), `heartbeat_test_${Date.now()}.json`);
   await mkdir(path.dirname(heartbeatPath), { recursive: true });
   await writeFile(heartbeatPath, JSON.stringify({
     bridgeVersion: expectedBridgeVersion,
@@ -35,6 +36,8 @@ async function writeHeartbeat(world, fields = {}) {
     ...fields,
   }), 'utf8');
 }
+
+const ackPathFor = (world, id) => path.join(bridgeDir(world), `ack_${id}.json`);
 
 test('buildCommand rejects non-allowlisted actions', () => {
   assert.throws(() => buildCommand('attack'), /not allowlisted/);
@@ -106,8 +109,7 @@ test('sendCommand writes command and waits for matching ack', async () => {
     assert.equal(command.id, 'status-1');
     assert.equal(command.action, 'status');
 
-    const ackPath = path.join(bridgeDir(world), 'ack.json');
-    await writeFile(ackPath, JSON.stringify({ id: 'status-1', status: 'ok' }), 'utf8');
+    await writeFile(ackPathFor(world, 'status-1'), JSON.stringify({ id: 'status-1', status: 'ok' }), 'utf8');
     const ack = await pending;
     assert.equal(ack.status, 'ok');
   } finally {
@@ -137,16 +139,15 @@ test('sendCommand ignores replayed and malformed acknowledgments', async () => {
       await delay(20);
     }
 
-    const ackPath = path.join(bridgeDir(world), 'ack.json');
-    await writeFile(ackPath, JSON.stringify({ id: 'old-command', status: 'ok' }), 'utf8');
+    await writeFile(ackPathFor(world, 'old-command'), JSON.stringify({ id: 'old-command', status: 'ok' }), 'utf8');
     await delay(60);
     assert.equal(settled, false);
 
-    await writeFile(ackPath, '{ malformed', 'utf8');
+    await writeFile(ackPathFor(world, 'fresh-command'), '{ malformed', 'utf8');
     await delay(60);
     assert.equal(settled, false);
 
-    await writeFile(ackPath, JSON.stringify({ id: 'fresh-command', status: 'ok' }), 'utf8');
+    await writeFile(ackPathFor(world, 'fresh-command'), JSON.stringify({ id: 'fresh-command', status: 'ok' }), 'utf8');
     assert.equal((await observed).status, 'ok');
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -174,14 +175,29 @@ test('sendCommand rejects failed, rejected, and expired acknowledgments', async 
       await delay(20);
     }
 
-    const ackPath = path.join(bridgeDir(world), 'ack.json');
-    await writeFile(ackPath, JSON.stringify({
+    await writeFile(ackPathFor(world, 'move-failed'), JSON.stringify({
       id: 'move-failed',
       action: 'move',
       status: 'ok',
       detail: { success: 0, error: 'movement failed' },
     }), 'utf8');
     await assert.rejects(pending, /Command move failed/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('sendCommand refuses to reuse an existing command-specific acknowledgment', async () => {
+  const { root, world } = await makeWorld();
+  try {
+    await mkdir(bridgeDir(world), { recursive: true });
+    await writeFile(ackPathFor(world, 'replay-id'), JSON.stringify({ id: 'replay-id', status: 'ok' }), 'utf8');
+    await assert.rejects(sendCommand(world, 'status', {}, {
+      id: 'replay-id',
+      now: 1000,
+      ttlMs: 5000,
+      timeoutMs: 100,
+    }), /Refusing to reuse existing ack file/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -216,12 +232,32 @@ test('assertFreshHeartbeat validates version, world, and age', async () => {
   }
 });
 
+test('readLatestBridgeJson selects newest matching bridge file', async () => {
+  const { root, world } = await makeWorld();
+  try {
+    const dir = bridgeDir(world);
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, 'heartbeat_old.json'), JSON.stringify({
+      bridgeVersion: expectedBridgeVersion,
+      unixMs: 1000,
+      worldFolder: path.basename(world),
+    }), 'utf8');
+    await writeFile(path.join(dir, 'heartbeat_new.json'), JSON.stringify({
+      bridgeVersion: expectedBridgeVersion,
+      unixMs: 2000,
+      worldFolder: path.basename(world),
+    }), 'utf8');
+    assert.equal((await readLatestBridgeJson(world, 'heartbeat')).unixMs, 2000);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('runSmoke sends explicit stop after bounded movement', async () => {
   const { root, world } = await makeWorld();
   const seen = [];
   async function responder() {
     const commandPath = path.join(bridgeDir(world), 'command.json');
-    const ackPath = path.join(bridgeDir(world), 'ack.json');
     let lastId = null;
     const deadline = Date.now() + 3000;
     while (seen.length < 6 && Date.now() < deadline) {
@@ -229,7 +265,8 @@ test('runSmoke sends explicit stop after bounded movement', async () => {
       if (command && command.id !== lastId) {
         lastId = command.id;
         seen.push(command);
-        await writeFile(ackPath, JSON.stringify({
+        await rm(commandPath, { force: true });
+        await writeFile(ackPathFor(world, command.id), JSON.stringify({
           id: command.id,
           action: command.action,
           status: 'ok',
@@ -258,7 +295,6 @@ test('runSmoke sends stop even when movement acknowledgment is lost', async () =
   const seen = [];
   async function responder() {
     const commandPath = path.join(bridgeDir(world), 'command.json');
-    const ackPath = path.join(bridgeDir(world), 'ack.json');
     let lastId = null;
     const deadline = Date.now() + 3000;
     while (seen.length < 5 && Date.now() < deadline) {
@@ -266,8 +302,9 @@ test('runSmoke sends stop even when movement acknowledgment is lost', async () =
       if (command && command.id !== lastId) {
         lastId = command.id;
         seen.push(command);
+        await rm(commandPath, { force: true });
         if (command.action !== 'move') {
-          await writeFile(ackPath, JSON.stringify({
+          await writeFile(ackPathFor(world, command.id), JSON.stringify({
             id: command.id,
             action: command.action,
             status: 'ok',
@@ -300,6 +337,11 @@ test('Scarpet script exposes version and keeps the safety allowlist narrow', asy
   assert.match(script, /'bridgeVersion' -> global_bridge_version/);
   assert.match(script, /'worldPath' -> system_info\('world_path'\)/);
   assert.match(script, /__heartbeat\(reason\)/);
+  assert.match(script, /try\(/);
+  assert.match(script, /global_heartbeat_slots = 12/);
+  assert.match(script, /floor\(tick_time\(\) \/ 200\) % global_heartbeat_slots/);
+  assert.match(script, /__write_json_safe\('heartbeat_' \+ slot/);
+  assert.match(script, /__write_json_safe\('ack_' \+ id/);
   assert.match(script, /__on_start\(\)/);
   assert.match(script, /__on_close\(\)/);
   assert.match(script, /query\(p, 'player_type'\)/);
@@ -315,6 +357,9 @@ test('Scarpet script exposes version and keeps the safety allowlist narrow', asy
   assert.match(script, /status = if\(detail:'success' == 0 \|\| detail:'error', 'failed', 'ok'\)/);
   assert.match(script, /'player ' \+ global_remy_name/);
   assert.match(script, /execute as @a\[name!=' \+ global_remy_name \+ ',limit=1\] at @s run player/);
+  assert.doesNotMatch(script, /write_file\('state'/);
+  assert.doesNotMatch(script, /write_file\('ack',/);
+  assert.doesNotMatch(script, /write_file\('heartbeat',/);
   assert.doesNotMatch(script, /spawn in survival/);
   assert.doesNotMatch(script, /__run_player\('(attack|drop|use|hotbar|mine|place)/);
 });

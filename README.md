@@ -2,7 +2,7 @@
 
 This is a small local proof-of-control bridge for testing `remy` as a separate teammate in a copied Homestead Minecraft world.
 
-The design uses the official Carpet mod for Minecraft 1.20/1.20.1 and a world-local Scarpet app. A local Node controller writes JSON command files into the copied world's `scripts/remy_bridge.data` directory, and the Scarpet app acknowledges commands and writes state back. There is no network listener, public tunnel, RCON, new credential, or second Minecraft client.
+The design uses the official Carpet mod for Minecraft 1.20/1.20.1 and a world-local Scarpet app. A local Node controller writes JSON command files into the copied world's `scripts/remy_bridge.data` directory, and the Scarpet app acknowledges commands with command-specific JSON files. There is no network listener, public tunnel, RCON, new credential, or second Minecraft client.
 
 Current scope:
 
@@ -11,6 +11,8 @@ Current scope:
 - Look in cardinal/up/down directions.
 - Move briefly, capped at 1000 ms, then stop automatically.
 - Stop immediately on request or when a command goes stale.
+- Avoid shared overwrite-style state files so Windows readers cannot block Carpet's delete-and-replace file writes.
+- Keep heartbeat files bounded to a small rotating slot set instead of writing one file per tick.
 
 Not in scope yet:
 

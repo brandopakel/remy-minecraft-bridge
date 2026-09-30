@@ -9,8 +9,12 @@ global_max_command_ttl_ms = 10000;
 global_clock_skew_ms = 10000;
 global_last_command_id = null;
 global_next_poll_tick = 0;
+global_next_heartbeat_tick = 0;
+global_heartbeat_slots = 12;
 global_move_expires_ms = 0;
 global_is_moving = false;
+global_pending_ack = null;
+global_writer_fault = null;
 
 __run_player(command) -> run('player ' + global_remy_name + ' ' + command);
 
@@ -23,6 +27,22 @@ __command_result(result) -> {
 __remy_player_type(p) -> if(p, query(p, 'player_type'), null);
 
 __remy_is_fake(p) -> p && __remy_player_type(p) == 'fake';
+
+__write_json_safe(file_name, payload) -> (
+    ok = try(
+        (write_file(file_name, 'json', payload); true),
+        'io_exception',
+        (
+            global_writer_fault = {
+                'file' -> file_name,
+                'tick' -> tick_time(),
+                'unixMs' -> unix_time()
+            };
+            false
+        )
+    );
+    ok
+);
 
 __stop_remy() -> (
     p = player(global_remy_name);
@@ -44,16 +64,27 @@ __stop_remy() -> (
 );
 
 __heartbeat(reason) -> (
-    write_file('heartbeat', 'json', {
+    now_ms = unix_time();
+    slot = floor(tick_time() / 200) % global_heartbeat_slots;
+    __write_json_safe('heartbeat_' + slot, {
         'bridgeVersion' -> global_bridge_version,
         'gameTarget' -> system_info('game_target'),
         'gameVersion' -> system_info('game_version'),
         'reason' -> reason,
+        'slot' -> slot,
         'tick' -> tick_time(),
-        'unixMs' -> unix_time(),
+        'unixMs' -> now_ms,
         'worldFolder' -> system_info('world_folder'),
         'worldPath' -> system_info('world_path')
     })
+);
+
+__maybe_heartbeat(reason) -> (
+    now_tick = tick_time();
+    if(now_tick >= global_next_heartbeat_tick,
+        global_next_heartbeat_tick = now_tick + 200;
+        __heartbeat(reason)
+    )
 );
 
 __enforce_move_expiry(now_ms) -> (
@@ -117,7 +148,8 @@ __state() -> (
         'remy' -> global_remy_name,
         'online' -> bool(p),
         'moving' -> global_is_moving,
-        'moveExpiresMs' -> global_move_expires_ms
+        'moveExpiresMs' -> global_move_expires_ms,
+        'writerFault' -> global_writer_fault
     };
     if(!p, return(base));
     player_type = __remy_player_type(p);
@@ -141,13 +173,25 @@ __state() -> (
 );
 
 __ack(id, action, status, detail) -> (
-    write_file('ack', 'json', {
+    global_pending_ack = {
         'id' -> id,
         'action' -> action,
         'status' -> status,
         'detail' -> detail,
         'state' -> __state()
-    })
+    };
+    __flush_pending_ack()
+);
+
+__flush_pending_ack() -> (
+    if(!global_pending_ack, return(true));
+    id = str(global_pending_ack:'id');
+    if(!id, return(false));
+    ok = __write_json_safe('ack_' + id, global_pending_ack);
+    if(ok,
+        global_pending_ack = null
+    );
+    ok
 );
 
 __spawn() -> (
@@ -240,11 +284,12 @@ __execute(cmd, now_ms) -> (
 __poll_remy_bridge() -> (
     now_ms = unix_time();
     __enforce_move_expiry(now_ms);
+    __flush_pending_ack();
     cmd = read_file('command', 'json');
     if(cmd,
         __execute(cmd, now_ms)
     );
-    write_file('state', 'json', __state())
+    __maybe_heartbeat('tick')
 );
 
 __on_tick() -> (

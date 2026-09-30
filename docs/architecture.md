@@ -11,8 +11,10 @@ Carpet avoids that client-handshake problem by running inside the already-launch
 - `scarpet/remy_bridge.sc`: world-local Scarpet app loaded by Carpet from the copied world's `scripts` folder.
 - `src/controller.mjs`: local command-line controller that writes JSON files to the copied world's app data folder.
 - `scripts/remy_bridge.data/command.json`: one-shot command mailbox.
-- `scripts/remy_bridge.data/ack.json`: command acknowledgment and state snapshot.
-- `scripts/remy_bridge.data/state.json`: latest state snapshot.
+- `scripts/remy_bridge.data/ack_<command-id>.json`: command-specific acknowledgment and state snapshot.
+- `scripts/remy_bridge.data/heartbeat_<slot>.json`: deployment heartbeat used by the controller to verify the loaded app version and world. The app rotates across 12 slots, so heartbeat growth is bounded.
+
+The bridge intentionally avoids shared overwrite-style files such as `state.json`. Carpet writes JSON by deleting the existing file before replacing it, and on Windows a reader that does not share delete access can make that fail. Command acks are command-specific, and heartbeats use a bounded slot ring so a stale reader cannot break the tick callback or safety watchdog.
 
 ## Safety Model
 
@@ -33,7 +35,7 @@ Every command carries:
 - `createdMs`: controller timestamp.
 - `expiresMs`: absolute deadline.
 
-The app rejects stale commands, acknowledges each accepted/rejected command, deletes processed command files, and sends `/player remy stop` automatically after a bounded move expires.
+The app rejects stale commands, acknowledges each accepted/rejected command, deletes processed command files, and sends `/player remy stop` automatically after a bounded move expires. The watchdog runs before file I/O; failed JSON writes are caught as Scarpet `io_exception`, recorded in memory, and retried for pending acknowledgments without replaying the action.
 
 ## Current Test Status
 
@@ -49,8 +51,8 @@ Prepared and verified locally:
 
 Blocked before live proof:
 
-- Runtime `0.1.2` was verified by `bridgeVersion`, but live spawn proof should wait for `0.1.4` so the controller can require a fresh matching heartbeat before live control.
-- Run `/script load remy_bridge` in the duplicate profile's copied world after deploying `0.1.4`.
+- Runtime `0.1.2` hit a Windows file writer failure while removing `state.json`. The fix is `0.1.4`, which removes tick `state.json` writes and uses command-specific ack files plus bounded heartbeat slots.
+- Run `/script load remy_bridge` in the duplicate profile's copied world after deploying `0.1.4`, then verify a fresh `heartbeat_*` file before live control.
 
 Unknown until launch:
 

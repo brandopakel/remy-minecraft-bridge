@@ -11,7 +11,7 @@ __config() -> {
 };
 
 global_remy_name = 'remy';
-global_bridge_version = '0.1.9';
+global_bridge_version = '0.1.10';
 global_max_command_ttl_ms = 10000;
 global_clock_skew_ms = 10000;
 global_last_command_id = null;
@@ -100,11 +100,20 @@ __queue_shape_self_test() -> (
     pos = node:0;
     node_first = node:1;
     node_depth = node:2;
+    start = __int_pos([890.6, 81.0, 34.3]);
+    dirs = [[1, 0]];
+    d = dirs:0;
+    [rx, ry, rz] = start;
+    [cx, cy, cz] = __int_pos(pos);
+    nx = cx + number(d:0);
+    nz = cz + number(d:1);
     {
         'ok' -> pos:0 == 1 && pos:1 == 2 && pos:2 == 3 && node_first == null && node_depth == 0,
         'pos' -> pos,
         'firstWasNull' -> node_first == null,
-        'depth' -> node_depth
+        'depth' -> node_depth,
+        'numericOk' -> abs(nx - rx) >= 0 && abs(nz - rz) >= 0,
+        'numericDelta' -> [nx - rx, nz - rz]
     }
 );
 
@@ -207,42 +216,49 @@ __is_dangerous_name(name) -> __is_name_in(name, [
 __is_support_name(name) -> name && !__is_passable_name(name) && !__is_dangerous_name(name);
 
 __flat_distance(a, b) -> (
-    [ax, ay, az] = a;
-    [bx, by, bz] = b;
+    [ax, ay, az] = __num_pos(a);
+    [bx, by, bz] = __num_pos(b);
     dx = bx - ax;
     dz = bz - az;
     sqrt(dx * dx + dz * dz)
 );
 
 __distance3(a, b) -> (
-    [ax, ay, az] = a;
-    [bx, by, bz] = b;
+    [ax, ay, az] = __num_pos(a);
+    [bx, by, bz] = __num_pos(b);
     dx = bx - ax;
     dy = by - ay;
     dz = bz - az;
     sqrt(dx * dx + dy * dy + dz * dz)
 );
 
+__num_pos(pos) -> [number(pos:0), number(pos:1), number(pos:2)];
+
+__int_pos(pos) -> [floor(number(pos:0)), floor(number(pos:1)), floor(number(pos:2))];
+
 __pos_key(pos) -> (
-    [x, y, z] = pos;
+    [x, y, z] = __int_pos(pos);
     x + ',' + y + ',' + z
 );
 
 __candidate_at(base_y, x, z) -> (
-    levels = [base_y, base_y + 1, base_y - 1, base_y - 2];
+    ix = floor(number(x));
+    iz = floor(number(z));
+    by = floor(number(base_y));
+    levels = [by, by + 1, by - 1, by - 2];
     result = null;
     loop(length(levels),
-        y = levels:_;
+        y = number(levels:_);
         if(!result,
-            foot = __block_name_at([x, y, z]);
-            head = __block_name_at([x, y + 1, z]);
-            below = __block_name_at([x, y - 1, z]);
+            foot = __block_name_at([ix, y, iz]);
+            head = __block_name_at([ix, y + 1, iz]);
+            below = __block_name_at([ix, y - 1, iz]);
             if(
                 !__is_dangerous_name(foot) && !__is_dangerous_name(head) && !__is_dangerous_name(below)
                 && __is_passable_name(foot) && __is_passable_name(head) && __is_support_name(below),
                 result = {
                     'ok' -> true,
-                    'pos' -> [x, y, z],
+                    'pos' -> [ix, y, iz],
                     'foot' -> foot,
                     'head' -> head,
                     'below' -> below
@@ -254,8 +270,8 @@ __candidate_at(base_y, x, z) -> (
 );
 
 __find_follow_step(remy_pos, owner_pos) -> (
-    [rx, ry, rz] = map(remy_pos, floor(_));
-    [ox, oy, oz] = map(owner_pos, floor(_));
+    [rx, ry, rz] = __int_pos(remy_pos);
+    [ox, oy, oz] = __int_pos(owner_pos);
     start = [rx, ry, rz];
     owner = [ox, oy, oz];
     start_distance = __flat_distance(start, owner);
@@ -274,12 +290,12 @@ __find_follow_step(remy_pos, owner_pos) -> (
         cursor += 1;
         pos = node:0;
         node_first = node:1;
-        node_depth = node:2;
-        [cx, cy, cz] = pos;
+        node_depth = number(node:2);
+        [cx, cy, cz] = __int_pos(pos);
         loop(length(dirs),
             d = dirs:_;
-            nx = cx + d:0;
-            nz = cz + d:1;
+            nx = cx + number(d:0);
+            nz = cz + number(d:1);
             if(abs(nx - rx) <= global_follow_search_radius && abs(nz - rz) <= global_follow_search_radius,
                 candidate = __candidate_at(cy, nx, nz);
                 if(candidate:'ok',
@@ -346,8 +362,8 @@ __track_follow_progress(remy_pos) -> (
 );
 
 __follow_safety(remy_pos, owner_pos) -> (
-    [rx, ry, rz] = remy_pos;
-    [ox, oy, oz] = owner_pos;
+    [rx, ry, rz] = __num_pos(remy_pos);
+    [ox, oy, oz] = __num_pos(owner_pos);
     dx = ox - rx;
     dz = oz - rz;
     flat = sqrt(dx * dx + dz * dz);
@@ -460,7 +476,7 @@ __state() -> (
     base:'controllable' = player_type == 'fake';
     if(player_type != 'fake', return(base));
     pos = query(p, 'pos');
-    center = map(pos, floor(_));
+    center = __int_pos(pos);
     base:'dimension' = query(p, 'dimension');
     base:'pos' = pos;
     base:'centerBlock' = center;
@@ -573,8 +589,8 @@ __follow_tick(now_ms) -> (
     );
     owner_pos = query(owner, 'pos');
     remy_pos = query(remy, 'pos');
-    [ox, oy, oz] = owner_pos;
-    [rx, ry, rz] = remy_pos;
+    [ox, oy, oz] = __num_pos(owner_pos);
+    [rx, ry, rz] = __num_pos(remy_pos);
     dx = ox - rx;
     dy = oy - ry;
     dz = oz - rz;

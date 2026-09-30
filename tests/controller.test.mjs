@@ -351,7 +351,7 @@ test('runSmoke sends stop even when movement acknowledgment is lost', async () =
 
 test('Scarpet script exposes version and keeps the safety allowlist narrow', async () => {
   const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
-  assert.match(script, /global_bridge_version = '0\.1\.9'/);
+  assert.match(script, /global_bridge_version = '0\.1\.10'/);
   assert.match(script, /'bridgeVersion' -> global_bridge_version/);
   assert.match(script, /'worldPath' -> system_info\('world_path'\)/);
   assert.match(script, /__heartbeat\(reason\)/);
@@ -400,13 +400,21 @@ test('Scarpet script exposes version and keeps the safety allowlist narrow', asy
   assert.match(script, /__candidate_at\(base_y, x, z\)/);
   assert.match(script, /__find_follow_step\(remy_pos, owner_pos\)/);
   assert.match(script, /__queue_shape_self_test\(\)/);
+  assert.match(script, /__num_pos\(pos\) -> \[number\(pos:0\), number\(pos:1\), number\(pos:2\)\]/);
+  assert.match(script, /__int_pos\(pos\) -> \[floor\(number\(pos:0\)\), floor\(number\(pos:1\)\), floor\(number\(pos:2\)\)\]/);
   assert.match(script, /queue = \[\[\[1, 2, 3\], null, 0\]\]/);
   assert.match(script, /'runtimeSelfTest' -> global_runtime_self_test/);
+  assert.match(script, /'numericOk' -> abs\(nx - rx\) >= 0 && abs\(nz - rz\) >= 0/);
+  assert.match(script, /center = __int_pos\(pos\)/);
   assert.match(script, /frontier = \[\[start, null, 0\]\]/);
   assert.match(script, /node = frontier:cursor/);
   assert.match(script, /pos = node:0/);
   assert.match(script, /node_first = node:1/);
-  assert.match(script, /node_depth = node:2/);
+  assert.match(script, /node_depth = number\(node:2\)/);
+  assert.match(script, /\[cx, cy, cz\] = __int_pos\(pos\)/);
+  assert.match(script, /nx = cx \+ number\(d:0\)/);
+  assert.match(script, /nz = cz \+ number\(d:1\)/);
+  assert.match(script, /__follow_safety\(remy_pos, owner_pos\) -> \(\s*\[rx, ry, rz\] = __num_pos\(remy_pos\);\s*\[ox, oy, oz\] = __num_pos\(owner_pos\);/s);
   assert.match(script, /while\(cursor < length\(frontier\) && cursor < global_follow_max_nodes/);
   assert.match(script, /__track_follow_progress\(remy_pos\)/);
   assert.match(script, /route = __find_follow_step\(remy_pos, owner_pos\)/);
@@ -433,6 +441,11 @@ test('Scarpet script exposes version and keeps the safety allowlist narrow', asy
   assert.doesNotMatch(script, /__on_player_command/);
   assert.doesNotMatch(script, /query\([^)]*, 'path'\)/);
   assert.doesNotMatch(script, /attack continuous/);
+  assert.doesNotMatch(script, /map\(remy_pos, floor/);
+  assert.doesNotMatch(script, /map\(owner_pos, floor/);
+  assert.doesNotMatch(script, /center = map\(pos, floor/);
+  assert.doesNotMatch(script, /nx = cx \+ d:0/);
+  assert.doesNotMatch(script, /nz = cz \+ d:1/);
   assert.doesNotMatch(script, /node:'first'/);
   assert.doesNotMatch(script, /node:'depth'/);
   assert.doesNotMatch(script, /write_file\('state'/);
@@ -479,7 +492,8 @@ test('Scarpet follow stops instead of forcing through blocked or dangerous terra
   const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
   assert.match(script, /__candidate_at\(base_y, x, z\)/);
   assert.match(script, /__is_support_name\(name\)/);
-  assert.match(script, /levels = \[base_y, base_y \+ 1, base_y - 1, base_y - 2\]/);
+  assert.match(script, /by = floor\(number\(base_y\)\)/);
+  assert.match(script, /levels = \[by, by \+ 1, by - 1, by - 2\]/);
   assert.match(script, /'reason' -> 'hazard'/);
   assert.match(script, /'reason' -> 'unsupported'/);
   assert.match(script, /'reason' -> 'no_supported_route'/);

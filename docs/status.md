@@ -66,6 +66,10 @@ Prepared `0.1.9` fixes the route queue to use explicit tuple nodes (`node:0`, `n
 
 `0.1.9` is deployed on disk in the copied test world with a backup of the previous copied-world script at `remy_bridge.sc.bak-20260930-001041`. The restarted game is still reporting live `0.1.8` heartbeats, so `0.1.9` has not been activated in memory yet and no follow retry has been run.
 
+Live `0.1.9` later activated with `runtimeSelfTest.ok: true` and Remy respawned as a fake survival player, but the follow attempt hit a second Scarpet numeric coercion error at `abs(nx - rx)` in `__find_follow_step`. A bridge stop succeeded immediately afterward with `activeGoal: idle`, `followActive: false`, `moving: false`, and `followStatus: manual_stop`.
+
+Prepared and deployed `0.1.10` casts position triples and route direction tuple components through numeric helpers before movement math, extends the runtime self-test to exercise the exact `abs(nx - rx)` arithmetic, and keeps command polling before follow ticks. The copied-world `0.1.9` script was backed up as `remy_bridge.sc.bak-20260930-002308`. Live memory remains `0.1.9` until `/script load remy_bridge` activates `0.1.10`.
+
 ## Guard/Fight Primitive Work
 
 Local branch: `guard-fight-primitives`.
@@ -97,8 +101,8 @@ This is not live construction yet. It does not place, mine, overwrite, or consum
 ## Recovery State
 
 - Local branch: `guard-fight-primitives`.
-- Last full local validation: `npm test` passed 42/42 and `npm run check` passed after the `0.1.9` fix.
-- Deployed duplicate-world script on disk is `0.1.9`; active in-memory script is still `0.1.8` until reload/startup activation.
-- Follow runtime proof depends on a fresh `0.1.9` heartbeat before any further live movement test.
+- Last full local validation: `npm test` passed 42/42 and `npm run check` passed after the `0.1.10` numeric-casting fix.
+- Deployed duplicate-world script on disk is `0.1.10`; active in-memory script is still `0.1.9` until reload/startup activation.
+- Follow runtime proof depends on a fresh `0.1.10` heartbeat before any further live movement test.
 - Guard/fight and blueprint planner work is local-only and has not been deployed to Minecraft.
 - No remote push has been made for this batch.

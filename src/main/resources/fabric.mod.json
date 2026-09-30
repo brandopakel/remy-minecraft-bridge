@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "remy_playerengine_adapter",
+  "version": "${version}",
+  "name": "Remy PlayerEngine Adapter",
+  "description": "Deterministic local Remy NPC control adapter for a copied Homestead test profile.",
+  "authors": [
+    "brandopakel",
+    "OpenAI Codex"
+  ],
+  "contact": {
+    "sources": "https://github.com/brandopakel/remy-minecraft-bridge"
+  },
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.brandopakel.remy.playerengine.RemyPlayerEngineAdapter"
+    ],
+    "client": [
+      "com.brandopakel.remy.playerengine.client.RemyPlayerEngineAdapterClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.17.2",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*",
+    "playerengine": "1.20.1-1.4.0"
+  }
+}

@@ -2,6 +2,10 @@ node_modules/
 npm-debug.log*
 .env
 .env.*
+.gradle/
+build/
+gradle-*/
+.gradle-cache/
 
 # Minecraft runtime/user data
 saves/

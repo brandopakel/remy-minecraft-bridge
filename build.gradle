@@ -1,0 +1,50 @@
+plugins {
+    id "fabric-loom" version "1.7-SNAPSHOT"
+}
+
+group = "com.brandopakel.remy"
+version = "0.1.0"
+
+base {
+    archivesName = "remy-playerengine-adapter"
+}
+
+repositories {
+    maven {
+        name = "Fabric"
+        url = "https://maven.fabricmc.net/"
+    }
+    maven {
+        name = "Mojang Libraries"
+        url = "https://libraries.minecraft.net/"
+    }
+    mavenCentral()
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+    withSourcesJar()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings "net.fabricmc:yarn:${minecraft_version}+build.10:v2"
+    modImplementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+
+    // Local, ignored copy of the verified official CurseForge PlayerEngine jar.
+    modImplementation files("libs/playerengine-fabric-1.20.1-1.4.0.jar")
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release = 17
+}

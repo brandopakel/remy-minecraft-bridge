@@ -106,3 +106,24 @@ This is not live construction yet. It does not place, mine, overwrite, or consum
 - Follow runtime proof depends on a fresh `0.1.10` heartbeat before any further live movement test.
 - Guard/fight and blueprint planner work is local-only and has not been deployed to Minecraft.
 - No remote push has been made for this batch.
+
+## PlayerEngine Adapter Track
+
+Separate worktree/branch: `playerengine-adapter`.
+
+Completed:
+
+- Downloaded official PlayerEngine Fabric `1.20.1` v`1.4.0` from CurseForge file `8454548`.
+- Verified PlayerEngine jar SHA-256: `0D160A4C5991DC40CEDA0889DA8C12E9997E60E5CB466BC2DA220CEDF12103CF`.
+- Verified PlayerEngine mod metadata requires Minecraft `~1.20.1`, Java `>=17`, Fabric Loader `>=0.17.2`, Architectury `>=9.2.14`, and Fabric API. The duplicate profile already has compatible Fabric Loader, Architectury, and Fabric API.
+- Built self-authored `remy-playerengine-adapter-0.1.0.jar` successfully with Gradle `8.10.2`.
+- Adapter jar SHA-256: `B7CBBDE627B7DA753E7E19A993D9C11777E8042949646FABDF9D4B271D19A03E`.
+- Added deterministic command surface: `/remyengine spawn`, `/remyengine come`, `/remyengine follow`, `/remyengine stop`, `/remyengine status`, and `/remyengine say`.
+- Audited PlayerEngine startup enough to identify automatic local mod-intelligence inspection as the main first-launch side effect to suppress.
+- Added profile-local config template `config/playerengine/server_player2.json` with mod-intelligence disabled for deterministic adapter testing.
+
+Not yet done:
+
+- PlayerEngine and the adapter have not been installed into the duplicate Minecraft profile because the duplicate game process was still running.
+- No runtime launch/test has been performed for the PlayerEngine adapter.
+- The adapter does not use PlayerEngine's natural-language/LLM/TTS/auth service path and has not implemented complex building.

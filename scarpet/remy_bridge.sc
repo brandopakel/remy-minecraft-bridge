@@ -4,7 +4,7 @@ __config() -> {
 };
 
 global_remy_name = 'remy';
-global_bridge_version = '0.1.2';
+global_bridge_version = '0.1.3';
 global_last_command_id = null;
 global_next_poll_tick = 0;
 global_move_expires_ms = 0;
@@ -112,7 +112,7 @@ __spawn() -> (
     if(p,
         return({'alreadyOnline' -> true})
     );
-    __command_result(run('execute at @a[name!=' + global_remy_name + ',limit=1] run player ' + global_remy_name + ' spawn'))
+    __command_result(run('execute as @a[name!=' + global_remy_name + ',limit=1] at @s run player ' + global_remy_name + ' spawn'))
 );
 
 __look(cmd) -> (

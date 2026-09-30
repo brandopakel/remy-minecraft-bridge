@@ -45,12 +45,12 @@ Prepared and verified locally:
 - Copied test world is `New World - Remy LAN Test`.
 - Bridge source, controller, and tests created.
 - Node safety test suite passes.
-- Versioned Scarpet script `0.1.2` is deployed to the copied test world.
+- Versioned Scarpet script `0.1.3` includes the safer spawn source fix and should be deployed to the copied test world before live spawn.
 
 Blocked before live proof:
 
-- The running Scarpet app has not reloaded the versioned script yet. The live state file is still missing `bridgeVersion`.
-- Run `/script load remy_bridge` in the duplicate profile's copied world to activate the deployed script.
+- Runtime `0.1.2` was verified by `bridgeVersion`, but live spawn proof should wait for `0.1.3` so Remy spawns through the human player source and inherits the player's mode.
+- Run `/script load remy_bridge` in the duplicate profile's copied world after deploying `0.1.3`.
 
 Unknown until launch:
 

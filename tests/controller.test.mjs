@@ -170,11 +170,13 @@ test('runSmoke sends explicit stop after bounded movement', async () => {
 
 test('Scarpet script exposes version and keeps the safety allowlist narrow', async () => {
   const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
-  assert.match(script, /global_bridge_version = '0\.1\.2'/);
+  assert.match(script, /global_bridge_version = '0\.1\.3'/);
   assert.match(script, /'bridgeVersion' -> global_bridge_version/);
   assert.match(script, /allowed = \['spawn', 'status', 'look', 'move', 'stop'\]/);
   assert.match(script, /global_is_moving && global_move_expires_ms && now_ms > global_move_expires_ms/);
   assert.match(script, /__stop_remy\(\)/);
   assert.match(script, /'player ' \+ global_remy_name/);
+  assert.match(script, /execute as @a\[name!=' \+ global_remy_name \+ ',limit=1\] at @s run player/);
+  assert.doesNotMatch(script, /spawn in survival/);
   assert.doesNotMatch(script, /attack|drop|use|hotbar|mine|place/);
 });

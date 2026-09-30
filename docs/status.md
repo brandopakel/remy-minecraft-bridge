@@ -18,12 +18,13 @@
 - Carpet is installed only in that duplicate profile.
 - The copied test world is `New World - Remy LAN Test`.
 - The bridge app loaded in the duplicate world and writes state files.
-- Versioned Scarpet script `0.1.2` has been deployed to the copied test world.
+- Versioned Scarpet script `0.1.2` was verified live by `bridgeVersion`.
+- Versioned Scarpet script `0.1.3` changes spawn to execute as the human player before `player remy spawn`, so Remy should inherit the player's mode instead of using the server/script source.
 - Local controller tests pass: 9/9.
 
 ## Current Blocker
 
-The running Scarpet app has not reloaded the latest deployed script yet. The live state file is still missing `bridgeVersion`, so runtime proof is pending a manual `/script load remy_bridge` in the duplicate world.
+Live `0.1.2` bridge status works in the copied world. Runtime proof is pending deployment/reload of `0.1.3`, then the approved spawn/read/look/brief-move/stop sequence.
 
 ## Live Proof Status
 
@@ -36,5 +37,5 @@ Completed:
 Pending:
 
 - Reload script in game.
-- Verify `bridgeVersion: 0.1.2` in `state.json`.
+- Verify `bridgeVersion: 0.1.3` in `state.json`.
 - Run approved live sequence: spawn, status, bounded surroundings/inventory read, look, brief move, stop, final status.

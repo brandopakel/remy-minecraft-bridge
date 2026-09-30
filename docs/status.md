@@ -48,4 +48,49 @@ Remaining:
 
 - Remy remains installed and available in the copied test world only.
 - No production/original-world rollout has been done.
-- No autonomy features have been implemented.
+- No production autonomy features have been implemented.
+
+## Follow Milestone In Progress
+
+Local `0.1.6` changes add owner-only `/remy_bridge follow`, `/remy_bridge stop`, `/remy_bridge status`, plus exact chat commands `remy follow`, `remy stop`, and `remy status`. Follow is implemented as a single tick-local goal with generation-based stop cancellation, simple forward steering toward the owner, and conservative stops for obstacles, cliffs, hazards, dimension mismatch, owner logout, or non-fake Remy.
+
+Local tests pass: 18/18. The added follow checks cover owner-gated cancellable commands, stop-before-player-stop sequencing, and blocked/hazard/cliff follow stops. The `0.1.6` script has been deployed to the copied test world, but runtime follow proof is still pending a `/script load remy_bridge` reload and fresh `0.1.6` heartbeat.
+
+Latest read-only heartbeat check found the copied world ticking on `0.1.5`, so the deployed `0.1.6` file is not active yet.
+
+## Guard/Fight Primitive Work
+
+Local branch: `guard-fight-primitives`.
+
+Added pure Node guard/combat primitives without changing the deployed world script:
+
+- Owner command parsing for `remy guard`, `/remy_bridge stop`, `remy fight nearest hostile`, and explicit `remy fight <target>`.
+- Guard/fight state transitions with stop-priority generation cancellation.
+- Hostile target selection that excludes owner, Remy, players, pets, and passive mobs by default.
+- Attack-once intent with cooldown, never continuous attack.
+- Reach and trace checks before attack intent.
+- Stop behavior for target disappearance, owner logout, Remy offline/non-fake, dimension mismatch, and owner too far.
+
+Local tests now pass: 26/26. This guard/fight work has not been deployed or live-tested; live combat remains blocked behind successful `0.1.6` follow proof.
+
+## Blueprint Planner Work
+
+Added offline building planner primitives without changing the deployed world script:
+
+- Deterministic `small_shelter` blueprint spec with explicit anchor, orientation, dimensions, and namespaced block/state palette.
+- Ordered, bounded placement steps with absolute positions.
+- Material count and missing-material reporting.
+- Progress reconciliation against observed block state, including complete, pending, unknown, and mismatched blocks.
+- Build generation cancellation so stale placement actions cannot continue after cancel/stop.
+- Documentation for translating user descriptions into validated specs without executing chat text or arbitrary code.
+
+This is not live construction yet. It does not place, mine, overwrite, or consume inventory in Minecraft.
+
+## Recovery State
+
+- Local branch: `guard-fight-primitives`.
+- Last full local validation: `npm test` passed 35/35 and `npm run check` passed.
+- Deployed duplicate-world script on disk is `0.1.6`, but the latest observed live heartbeat was still `0.1.5`.
+- Follow runtime proof depends on a fresh `0.1.6` heartbeat before any further live movement test.
+- Guard/fight and blueprint planner work is local-only and has not been deployed to Minecraft.
+- No remote push has been made for this batch.

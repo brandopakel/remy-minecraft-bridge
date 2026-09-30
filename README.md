@@ -10,6 +10,9 @@ Current scope:
 - Read position, look vector, gamemode, inventory, and a bounded 3x3x3 surrounding block sample.
 - Look in cardinal/up/down directions.
 - Move briefly, capped at 1000 ms, then stop automatically.
+- Owner-only in-game commands: `/remy_bridge follow`, `/remy_bridge stop`, `/remy_bridge status`, plus chat forms `remy follow`, `remy stop`, and `remy status`.
+- Follow as a first-pass tick-local goal with stop priority, bounded distance/vertical checks, and conservative hazard/cliff/obstacle stops.
+- Offline blueprint planning for a deterministic `small_shelter` spec, including palette validation, material counts, ordered placement steps, reconciliation, and cancellation generation.
 - Stop immediately on request or when a command goes stale.
 - Avoid shared overwrite-style state files so Windows readers cannot block Carpet's delete-and-replace file writes.
 - Keep heartbeat files bounded to a small rotating slot set instead of writing one file per tick.
@@ -17,8 +20,8 @@ Current scope:
 
 Not in scope yet:
 
-- Mining, building, attacking, using items, dropping items, hotbar changes, inventory mutation, or broad autonomy.
+- Reliable pathfinding around obstacles, live construction, mining, attacking, using items, dropping items, hotbar changes, inventory mutation, or broad autonomy.
 - Original Homestead profile/world mutation.
 - Publishing Minecraft saves, player data, logs, jars, or Homestead pack content.
 
-See `docs/setup.md` and `docs/architecture.md` for the exact test flow and safety model.
+See `docs/setup.md`, `docs/architecture.md`, and `docs/blueprints.md` for the exact test flow and safety model.

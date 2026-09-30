@@ -1,0 +1,14 @@
+{
+  "name": "remy-minecraft-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Carpet/Scarpet file bridge for a copied Homestead Minecraft world.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "node --check src/controller.mjs && node --check tests/controller.test.mjs",
+    "test": "node --test"
+  }
+}

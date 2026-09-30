@@ -1,0 +1,41 @@
+node_modules/
+npm-debug.log*
+.env
+.env.*
+
+# Minecraft runtime/user data
+saves/
+world/
+worlds/
+logs/
+crash-reports/
+screenshots/
+backups/
+*.log
+hs_err_pid*.log
+replay_pid*.log
+session.lock
+usercache.json
+usernamecache.json
+
+# Third-party binaries and launcher artifacts
+*.jar
+*.zip
+*.mrpack
+libraries/
+versions/
+downloads/
+.fabric/
+.mixin.out/
+
+# Bridge runtime mailbox files
+**/remy_bridge.data/
+**/command.json
+**/ack.json
+**/state.json
+
+# Local editor/OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

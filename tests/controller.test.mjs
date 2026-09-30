@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -10,6 +10,7 @@ import {
   buildCommand,
   expectedBridgeVersion,
   maxCommandTtlMs,
+  pruneBridgeFiles,
   readJsonIfPresent,
   readLatestBridgeJson,
   resolveWorldPath,
@@ -248,6 +249,23 @@ test('readLatestBridgeJson selects newest matching bridge file', async () => {
       worldFolder: path.basename(world),
     }), 'utf8');
     assert.equal((await readLatestBridgeJson(world, 'heartbeat')).unixMs, 2000);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('pruneBridgeFiles bounds generated bridge files', async () => {
+  const { root, world } = await makeWorld();
+  try {
+    const dir = bridgeDir(world);
+    await mkdir(dir, { recursive: true });
+    for (let i = 0; i < 6; i += 1) {
+      await writeFile(path.join(dir, `ack_${i}.json`), JSON.stringify({ id: i }), 'utf8');
+      await delay(5);
+    }
+    assert.equal(await pruneBridgeFiles(world, 'ack', 3), 3);
+    const remaining = (await readdir(dir)).filter((name) => name.startsWith('ack_'));
+    assert.equal(remaining.length, 3);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,6 +12,8 @@ export const maxCommandTtlMs = 10000;
 export const reservedCommandFields = new Set(['id', 'action', 'createdMs', 'expiresMs']);
 export const expectedBridgeVersion = '0.1.4';
 export const defaultHeartbeatMaxAgeMs = 5 * 60 * 1000;
+export const defaultMaxAckFiles = 64;
+export const defaultMaxHeartbeatFiles = 12;
 
 function isPathInside(child, parent) {
   const relative = path.relative(parent, child);
@@ -64,6 +66,37 @@ export async function readLatestBridgeJson(worldPath, prefix, options = {}) {
   }
   candidates.sort((a, b) => b.sortTime - a.sortTime);
   return candidates[0]?.value ?? null;
+}
+
+export async function pruneBridgeFiles(worldPath, prefix, maxFiles, options = {}) {
+  const dir = bridgeDir(worldPath, options);
+  let entries = [];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return 0;
+    throw error;
+  }
+
+  const candidates = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.startsWith(`${prefix}_`) || !entry.name.endsWith('.json')) continue;
+    const file = path.join(dir, entry.name);
+    const fileStat = await stat(file);
+    candidates.push({ file, mtimeMs: fileStat.mtimeMs });
+  }
+
+  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  let removed = 0;
+  for (const candidate of candidates.slice(maxFiles)) {
+    try {
+      await rm(candidate.file, { force: true });
+      removed += 1;
+    } catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'EPERM' && error.code !== 'EBUSY') throw error;
+    }
+  }
+  return removed;
 }
 
 export function buildCommand(action, fields = {}, options = {}) {
@@ -146,7 +179,9 @@ export function assertFreshHeartbeat(heartbeat, worldPath, options = {}) {
 }
 
 export async function requireFreshHeartbeat(worldPath, options = {}) {
-  return assertFreshHeartbeat(await readLatestBridgeJson(worldPath, 'heartbeat', options), worldPath, options);
+  const heartbeat = await readLatestBridgeJson(worldPath, 'heartbeat', options);
+  await pruneBridgeFiles(worldPath, 'heartbeat', options.maxHeartbeatFiles ?? defaultMaxHeartbeatFiles, options);
+  return assertFreshHeartbeat(heartbeat, worldPath, options);
 }
 
 export async function readJsonIfPresent(file) {
@@ -172,6 +207,7 @@ export async function sendCommand(worldPath, action, fields = {}, options = {}) 
   const ackPath = path.join(dir, `ack_${command.id}.json`);
 
   await mkdir(dir, { recursive: true });
+  await pruneBridgeFiles(worldPath, 'ack', options.maxAckFiles ?? defaultMaxAckFiles, options);
   try {
     await stat(ackPath);
     throw new Error(`Refusing to reuse existing ack file for command id ${command.id}`);
@@ -185,7 +221,11 @@ export async function sendCommand(worldPath, action, fields = {}, options = {}) 
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const ack = await readJsonIfPresent(ackPath);
-    if (ack?.id === command.id) return options.allowFailureAck ? ack : assertSuccessfulAck(ack);
+    if (ack?.id === command.id) {
+      const result = options.allowFailureAck ? ack : assertSuccessfulAck(ack);
+      await pruneBridgeFiles(worldPath, 'ack', options.maxAckFiles ?? defaultMaxAckFiles, options);
+      return result;
+    }
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
   throw new Error(`Timed out waiting for ack for ${action}; is remy_bridge.sc loaded in the world?`);

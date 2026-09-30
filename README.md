@@ -13,6 +13,7 @@ Current scope:
 - Stop immediately on request or when a command goes stale.
 - Avoid shared overwrite-style state files so Windows readers cannot block Carpet's delete-and-replace file writes.
 - Keep heartbeat files bounded to a small rotating slot set instead of writing one file per tick.
+- Prune old command acknowledgment files from the controller side.
 
 Not in scope yet:
 

@@ -19,7 +19,7 @@
 - The copied test world is `New World - Remy LAN Test`.
 - The bridge app loaded in the duplicate world and acknowledged file commands.
 - Versioned Scarpet script `0.1.2` was verified live by `bridgeVersion`.
-- Versioned Scarpet script `0.1.4` adds safer spawn source, fake-player-only control, lifecycle stop hooks, fresh heartbeat gating with 12 bounded heartbeat slots, lost-ack stop coverage, command-specific acks, and no tick `state.json` overwrite.
+- Versioned Scarpet script `0.1.4` adds safer spawn source, fake-player-only control, lifecycle stop hooks, fresh heartbeat gating with 12 bounded heartbeat slots, lost-ack stop coverage, command-specific acks with controller-side pruning, and no tick `state.json` overwrite.
 - Local controller tests pass: 15/15.
 
 ## Current Blocker
@@ -32,7 +32,7 @@ Completed:
 
 - Confirmed the bridge can acknowledge file commands in the copied world.
 - Confirmed stale initial script failed spawn due Carpet command syntax and fixed the source.
-- Confirmed safety tests for action allowlist, command TTL bounds, path confinement, stale/malformed acknowledgments, command-specific ack replay defense, heartbeat version/world/age gating, bounded movement, lost movement ack stop, explicit stop sequencing, and Scarpet allowlist/version checks.
+- Confirmed safety tests for action allowlist, command TTL bounds, path confinement, stale/malformed acknowledgments, command-specific ack replay defense and pruning, heartbeat version/world/age gating, bounded movement, lost movement ack stop, explicit stop sequencing, and Scarpet allowlist/version checks.
 
 Pending:
 

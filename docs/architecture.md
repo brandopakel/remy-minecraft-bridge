@@ -11,10 +11,10 @@ Carpet avoids that client-handshake problem by running inside the already-launch
 - `scarpet/remy_bridge.sc`: world-local Scarpet app loaded by Carpet from the copied world's `scripts` folder.
 - `src/controller.mjs`: local command-line controller that writes JSON files to the copied world's app data folder.
 - `scripts/remy_bridge.data/command.json`: one-shot command mailbox.
-- `scripts/remy_bridge.data/ack_<command-id>.json`: command-specific acknowledgment and state snapshot.
+- `scripts/remy_bridge.data/ack_<command-id>.json`: command-specific acknowledgment and state snapshot. The controller keeps only the newest 64 ack files by default.
 - `scripts/remy_bridge.data/heartbeat_<slot>.json`: deployment heartbeat used by the controller to verify the loaded app version and world. The app rotates across 12 slots, so heartbeat growth is bounded.
 
-The bridge intentionally avoids shared overwrite-style files such as `state.json`. Carpet writes JSON by deleting the existing file before replacing it, and on Windows a reader that does not share delete access can make that fail. Command acks are command-specific, and heartbeats use a bounded slot ring so a stale reader cannot break the tick callback or safety watchdog.
+The bridge intentionally avoids shared overwrite-style files such as `state.json`. Carpet writes JSON by deleting the existing file before replacing it, and on Windows a reader that does not share delete access can make that fail. Command acks are command-specific with controller-side pruning, and heartbeats use a bounded slot ring so a stale reader cannot break the tick callback or safety watchdog.
 
 ## Safety Model
 

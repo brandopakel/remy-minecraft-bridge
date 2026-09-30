@@ -11,7 +11,7 @@ __config() -> {
 };
 
 global_remy_name = 'remy';
-global_bridge_version = '0.1.8';
+global_bridge_version = '0.1.9';
 global_max_command_ttl_ms = 10000;
 global_clock_skew_ms = 10000;
 global_last_command_id = null;
@@ -39,6 +39,7 @@ global_goal_generation = 0;
 global_follow_generation = 0;
 global_pending_ack = null;
 global_writer_fault = null;
+global_runtime_self_test = null;
 
 __run_player(command) -> run('player ' + global_remy_name + ' ' + command);
 
@@ -93,6 +94,20 @@ __write_json_safe(file_name, payload) -> (
     ok
 );
 
+__queue_shape_self_test() -> (
+    queue = [[[1, 2, 3], null, 0]];
+    node = queue:0;
+    pos = node:0;
+    node_first = node:1;
+    node_depth = node:2;
+    {
+        'ok' -> pos:0 == 1 && pos:1 == 2 && pos:2 == 3 && node_first == null && node_depth == 0,
+        'pos' -> pos,
+        'firstWasNull' -> node_first == null,
+        'depth' -> node_depth
+    }
+);
+
 __stop_remy() -> (
     p = player(global_remy_name);
     if(!p,
@@ -120,6 +135,7 @@ __heartbeat(reason) -> (
         'gameTarget' -> system_info('game_target'),
         'gameVersion' -> system_info('game_version'),
         'reason' -> reason,
+        'runtimeSelfTest' -> global_runtime_self_test,
         'slot' -> slot,
         'tick' -> tick_time(),
         'unixMs' -> now_ms,
@@ -248,7 +264,7 @@ __find_follow_step(remy_pos, owner_pos) -> (
     );
 
     dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
-    frontier = [{'pos' -> start, 'first' -> null, 'depth' -> 0}];
+    frontier = [[start, null, 0]];
     visited = [__pos_key(start)];
     best = null;
     best_score = 1000000;
@@ -256,7 +272,9 @@ __find_follow_step(remy_pos, owner_pos) -> (
     while(cursor < length(frontier) && cursor < global_follow_max_nodes,
         node = frontier:cursor;
         cursor += 1;
-        pos = node:'pos';
+        pos = node:0;
+        node_first = node:1;
+        node_depth = node:2;
         [cx, cy, cz] = pos;
         loop(length(dirs),
             d = dirs:_;
@@ -268,8 +286,8 @@ __find_follow_step(remy_pos, owner_pos) -> (
                     key = __pos_key(candidate:'pos');
                     if(!first(visited, _ == key),
                         visited += [key];
-                        first_step = if(node:'first', node:'first', candidate:'pos');
-                        depth = node:'depth' + 1;
+                        first_step = if(node_first, node_first, candidate:'pos');
+                        depth = node_depth + 1;
                         distance = __flat_distance(candidate:'pos', owner);
                         score = distance + depth * 0.15;
                         if(!best || score < best_score,
@@ -296,7 +314,7 @@ __find_follow_step(remy_pos, owner_pos) -> (
                             })
                         );
                         if(depth < global_follow_search_radius,
-                            frontier += [{'pos' -> candidate:'pos', 'first' -> first_step, 'depth' -> depth}]
+                            frontier += [[candidate:'pos', first_step, depth]]
                         )
                     )
                 )
@@ -433,6 +451,7 @@ __state() -> (
         'followStatus' -> global_follow_last_status,
         'followRoute' -> global_follow_last_route,
         'followStuckTicks' -> global_follow_stuck_ticks,
+        'runtimeSelfTest' -> global_runtime_self_test,
         'writerFault' -> global_writer_fault
     };
     if(!p, return(base));
@@ -697,12 +716,12 @@ __execute(cmd, now_ms) -> (
 __poll_remy_bridge() -> (
     now_ms = unix_time();
     __enforce_move_expiry(now_ms);
-    __follow_tick(now_ms);
-    __flush_pending_ack();
     cmd = read_file('command', 'json');
     if(cmd,
         __execute(cmd, now_ms)
     );
+    __follow_tick(now_ms);
+    __flush_pending_ack();
     __maybe_heartbeat('tick')
 );
 
@@ -767,6 +786,7 @@ __on_player_message(p, message) -> (
 __on_start() -> (
     __cancel_goal('reload');
     __stop_remy();
+    global_runtime_self_test = __queue_shape_self_test();
     __heartbeat('start')
 );
 

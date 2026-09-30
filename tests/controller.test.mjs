@@ -351,7 +351,7 @@ test('runSmoke sends stop even when movement acknowledgment is lost', async () =
 
 test('Scarpet script exposes version and keeps the safety allowlist narrow', async () => {
   const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
-  assert.match(script, /global_bridge_version = '0\.1\.8'/);
+  assert.match(script, /global_bridge_version = '0\.1\.9'/);
   assert.match(script, /'bridgeVersion' -> global_bridge_version/);
   assert.match(script, /'worldPath' -> system_info\('world_path'\)/);
   assert.match(script, /__heartbeat\(reason\)/);
@@ -399,6 +399,14 @@ test('Scarpet script exposes version and keeps the safety allowlist narrow', asy
   assert.match(script, /'minecraft:powder_snow'/);
   assert.match(script, /__candidate_at\(base_y, x, z\)/);
   assert.match(script, /__find_follow_step\(remy_pos, owner_pos\)/);
+  assert.match(script, /__queue_shape_self_test\(\)/);
+  assert.match(script, /queue = \[\[\[1, 2, 3\], null, 0\]\]/);
+  assert.match(script, /'runtimeSelfTest' -> global_runtime_self_test/);
+  assert.match(script, /frontier = \[\[start, null, 0\]\]/);
+  assert.match(script, /node = frontier:cursor/);
+  assert.match(script, /pos = node:0/);
+  assert.match(script, /node_first = node:1/);
+  assert.match(script, /node_depth = node:2/);
   assert.match(script, /while\(cursor < length\(frontier\) && cursor < global_follow_max_nodes/);
   assert.match(script, /__track_follow_progress\(remy_pos\)/);
   assert.match(script, /route = __find_follow_step\(remy_pos, owner_pos\)/);
@@ -425,6 +433,8 @@ test('Scarpet script exposes version and keeps the safety allowlist narrow', asy
   assert.doesNotMatch(script, /__on_player_command/);
   assert.doesNotMatch(script, /query\([^)]*, 'path'\)/);
   assert.doesNotMatch(script, /attack continuous/);
+  assert.doesNotMatch(script, /node:'first'/);
+  assert.doesNotMatch(script, /node:'depth'/);
   assert.doesNotMatch(script, /write_file\('state'/);
   assert.doesNotMatch(script, /write_file\('ack',/);
   assert.doesNotMatch(script, /write_file\('heartbeat',/);
@@ -451,6 +461,20 @@ test('Scarpet follow commands are owner-gated and cancellable', async () => {
   assert.doesNotMatch(script, /__on_player_command/);
 });
 
+test('Scarpet polling gives external stop commands priority over follow ticks', async () => {
+  const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
+  const pollStart = script.indexOf('__poll_remy_bridge() ->');
+  const tickStart = script.indexOf('__on_tick() ->', pollStart);
+  const pollBody = script.slice(pollStart, tickStart);
+  const commandIndex = pollBody.indexOf("cmd = read_file('command', 'json')");
+  const executeIndex = pollBody.indexOf('__execute(cmd, now_ms)');
+  const followIndex = pollBody.indexOf('__follow_tick(now_ms)');
+
+  assert.ok(commandIndex > -1, 'poll must read the local command file');
+  assert.ok(executeIndex > commandIndex, 'poll must execute commands after reading them');
+  assert.ok(followIndex > executeIndex, 'follow tick must run after command processing so stop can cancel first');
+});
+
 test('Scarpet follow stops instead of forcing through blocked or dangerous terrain', async () => {
   const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
   assert.match(script, /__candidate_at\(base_y, x, z\)/);
@@ -466,5 +490,7 @@ test('Scarpet follow stops instead of forcing through blocked or dangerous terra
   assert.match(script, /__stop_all\('owner_offline'\)/);
   assert.match(script, /__stop_all\('stuck'\)/);
   assert.doesNotMatch(script, /query\([^)]*, 'path'\)/);
+  assert.doesNotMatch(script, /frontier = \[\{'pos'/);
+  assert.doesNotMatch(script, /node:'pos'/);
   assert.doesNotMatch(script, /teleport|set\(|place_item|harvest|attack continuous/);
 });

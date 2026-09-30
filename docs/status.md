@@ -52,13 +52,19 @@ Remaining:
 
 ## Follow Milestone In Progress
 
-Local `0.1.8` changes add owner-only `/remy_bridge follow`, `/remy_bridge stop`, `/remy_bridge status`, plus exact chat commands `remy follow`, `remy stop`, and `remy status`. Follow is implemented as a single tick-local goal with generation-based stop cancellation, bounded local supported-neighbor navigation, and conservative stops for unsupported routes, stuck movement, hazards, dimension mismatch, owner logout, or non-fake Remy.
+Local follow changes add owner-only `/remy_bridge follow`, `/remy_bridge stop`, `/remy_bridge status`, plus exact chat commands `remy follow`, `remy stop`, and `remy status`. Follow is implemented as a single tick-local goal with generation-based stop cancellation, bounded local supported-neighbor navigation, and conservative stops for unsupported routes, stuck movement, hazards, dimension mismatch, owner logout, or non-fake Remy.
 
-Local tests pass: 41/41. The added follow checks cover owner-gated cancellable commands, stop-before-player-stop sequencing, bounded local navigation, one-block step-up, modest safe drops, hazard avoidance, unsupported-cliff no-route handling, and stuck stops. The `0.1.8` script has been deployed to the copied test world, but runtime follow proof is still pending a fresh `0.1.8` heartbeat.
+Local tests after the `0.1.9` fix pass: 42/42, and `npm run check` passes. The added follow checks cover owner-gated cancellable commands, stop-before-player-stop sequencing, bounded local navigation, one-block step-up, modest safe drops, hazard avoidance, unsupported-cliff no-route handling, stuck stops, Scarpet tuple queue shape, and command-file stop priority before follow ticks.
 
 Latest live `0.1.6` follow attempt recognized owner chat (`remy follow on`) but immediately stopped with `followStatus: blocked_blocked_feet`. Diagnosis: Scarpet reports vanilla block names as `air`/`stone` in observed state, while the `0.1.6` passable/hazard lists only matched namespaced ids such as `minecraft:air`. `0.1.7` accepts both forms.
 
 Latest live `0.1.7` follow attempt recognized owner chat and loaded correctly, but immediately stopped with `followStatus: blocked_cliff`. Runtime evidence showed Remy at `[889.546, 82, 34.3]` with a projected east step over unsupported air. `0.1.8` replaces straight-line stepping with bounded local supported-neighbor navigation.
+
+Latest live `0.1.8` follow attempt activated and recognized the route-follow goal, but failed repeatedly in Scarpet with `Argument 'address' to a list index has to be of a numeric type` at `pos = node:'pos'` inside `__find_follow_step`. The cause was Scarpet container access semantics: the runtime frontier node was a list-like value and required numeric tuple indexes rather than map-key access. A bridge `stop` command succeeded afterward, and a follow-state read confirmed `activeGoal: idle`, `followActive: false`, `moving: false`, `moveExpiresMs: 0`, and `followStatus: manual_stop`.
+
+Prepared `0.1.9` fixes the route queue to use explicit tuple nodes (`node:0`, `node:1`, `node:2`), adds a Scarpet-side queue-shape self-test recorded in heartbeat/state, and processes external file commands before follow ticks so `stop` keeps priority if a future route tick fails.
+
+`0.1.9` is deployed on disk in the copied test world with a backup of the previous copied-world script at `remy_bridge.sc.bak-20260930-001041`. The restarted game is still reporting live `0.1.8` heartbeats, so `0.1.9` has not been activated in memory yet and no follow retry has been run.
 
 ## Guard/Fight Primitive Work
 
@@ -91,8 +97,8 @@ This is not live construction yet. It does not place, mine, overwrite, or consum
 ## Recovery State
 
 - Local branch: `guard-fight-primitives`.
-- Last full local validation: `npm test` passed 41/41 and `npm run check` passed.
-- Deployed duplicate-world script on disk is `0.1.8`.
-- Follow runtime proof depends on a fresh `0.1.8` heartbeat before any further live movement test.
+- Last full local validation: `npm test` passed 42/42 and `npm run check` passed after the `0.1.9` fix.
+- Deployed duplicate-world script on disk is `0.1.9`; active in-memory script is still `0.1.8` until reload/startup activation.
+- Follow runtime proof depends on a fresh `0.1.9` heartbeat before any further live movement test.
 - Guard/fight and blueprint planner work is local-only and has not been deployed to Minecraft.
 - No remote push has been made for this batch.

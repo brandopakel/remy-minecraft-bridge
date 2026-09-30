@@ -110,7 +110,7 @@ __spawn() -> (
     if(p,
         return({'alreadyOnline' -> true})
     );
-    __command_result(run('execute as @a[name!=' + global_remy_name + ',limit=1] at @s run player ' + global_remy_name + ' spawn in survival'))
+    __command_result(run('execute at @a[name!=' + global_remy_name + ',limit=1] run player ' + global_remy_name + ' spawn'))
 );
 
 __look(cmd) -> (

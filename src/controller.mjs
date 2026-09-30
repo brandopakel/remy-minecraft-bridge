@@ -9,6 +9,9 @@ export const moveDirections = new Set(['forward', 'backward', 'left', 'right']);
 export const maxMoveDurationMs = 1000;
 export const defaultCommandTtlMs = 5000;
 export const maxCommandTtlMs = 10000;
+export const reservedCommandFields = new Set(['id', 'action', 'createdMs', 'expiresMs']);
+export const expectedBridgeVersion = '0.1.4';
+export const defaultHeartbeatMaxAgeMs = 5 * 60 * 1000;
 
 function isPathInside(child, parent) {
   const relative = path.relative(parent, child);
@@ -33,13 +36,37 @@ export function bridgeDir(worldPath, options = {}) {
   return path.join(resolveWorldPath(worldPath, options), 'scripts', 'remy_bridge.data');
 }
 
+export async function readBridgeJson(worldPath, fileName, options = {}) {
+  return readJsonIfPresent(path.join(bridgeDir(worldPath, options), fileName));
+}
+
 export function buildCommand(action, fields = {}, options = {}) {
   if (!allowedActions.has(action)) throw new Error(`Action not allowlisted: ${action}`);
-  if (action === 'look' && !lookDirections.has(fields.direction)) {
-    throw new Error('Invalid look direction');
+
+  for (const key of Object.keys(fields)) {
+    if (reservedCommandFields.has(key)) {
+      throw new Error(`Field is reserved and cannot be overridden: ${key}`);
+    }
   }
-  if (action === 'move' && !moveDirections.has(fields.direction)) {
-    throw new Error('Invalid move direction');
+
+  const allowedFieldsByAction = {
+    spawn: new Set(),
+    status: new Set(),
+    look: new Set(['direction']),
+    move: new Set(['direction', 'durationMs']),
+    stop: new Set(),
+  };
+  for (const key of Object.keys(fields)) {
+    if (!allowedFieldsByAction[action].has(key)) {
+      throw new Error(`Field is not valid for ${action}: ${key}`);
+    }
+  }
+
+  if (action === 'look') {
+    if (!lookDirections.has(fields.direction)) throw new Error('Invalid look direction');
+  }
+  if (action === 'move') {
+    if (!moveDirections.has(fields.direction)) throw new Error('Invalid move direction');
   }
 
   const ttlMs = options.ttlMs ?? defaultCommandTtlMs;
@@ -62,6 +89,38 @@ export function buildCommand(action, fields = {}, options = {}) {
   }
 
   return command;
+}
+
+export function assertSuccessfulAck(ack) {
+  if (ack?.status !== 'ok') {
+    throw new Error(`Command ${ack?.action ?? 'unknown'} was ${ack?.status ?? 'not acknowledged'}: ${JSON.stringify(ack?.detail ?? null)}`);
+  }
+  if (ack.detail?.success === 0 || ack.detail?.success === false) {
+    throw new Error(`Command ${ack.action} failed: ${JSON.stringify(ack.detail)}`);
+  }
+  return ack;
+}
+
+export function assertFreshHeartbeat(heartbeat, worldPath, options = {}) {
+  if (!heartbeat) throw new Error('Missing remy_bridge heartbeat; reload the deployed script before live control');
+  const expectedVersion = options.expectedVersion ?? expectedBridgeVersion;
+  if (heartbeat.bridgeVersion !== expectedVersion) {
+    throw new Error(`remy_bridge heartbeat version ${heartbeat.bridgeVersion ?? 'unknown'} does not match expected ${expectedVersion}`);
+  }
+  const expectedWorldFolder = path.basename(resolveWorldPath(worldPath, options));
+  if (heartbeat.worldFolder !== expectedWorldFolder) {
+    throw new Error(`remy_bridge heartbeat world ${heartbeat.worldFolder ?? 'unknown'} does not match ${expectedWorldFolder}`);
+  }
+  const now = options.now ?? Date.now();
+  const maxAgeMs = options.maxAgeMs ?? defaultHeartbeatMaxAgeMs;
+  if (!Number.isFinite(Number(heartbeat.unixMs)) || now - Number(heartbeat.unixMs) > maxAgeMs) {
+    throw new Error('remy_bridge heartbeat is stale; reload the deployed script before live control');
+  }
+  return heartbeat;
+}
+
+export async function requireFreshHeartbeat(worldPath, options = {}) {
+  return assertFreshHeartbeat(await readBridgeJson(worldPath, 'heartbeat.json', options), worldPath, options);
 }
 
 export async function readJsonIfPresent(file) {
@@ -95,28 +154,31 @@ export async function sendCommand(worldPath, action, fields = {}, options = {}) 
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const ack = await readJsonIfPresent(ackPath);
-    if (ack?.id === command.id) return ack;
+    if (ack?.id === command.id) return options.allowFailureAck ? ack : assertSuccessfulAck(ack);
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
   throw new Error(`Timed out waiting for ack for ${action}; is remy_bridge.sc loaded in the world?`);
 }
 
-export async function runSmoke(worldPath) {
+export async function runSmoke(worldPath, options = {}) {
+  const commandOptions = options.commandOptions ?? {};
+  const waitAfterMoveMs = options.waitAfterMoveMs ?? 700;
+  await requireFreshHeartbeat(worldPath, options.heartbeatOptions ?? {});
   const results = [];
-  results.push(await sendCommand(worldPath, 'spawn'));
-  results.push(await sendCommand(worldPath, 'status'));
-  results.push(await sendCommand(worldPath, 'look', { direction: 'east' }));
+  results.push(await sendCommand(worldPath, 'spawn', {}, commandOptions));
+  results.push(await sendCommand(worldPath, 'status', {}, commandOptions));
+  results.push(await sendCommand(worldPath, 'look', { direction: 'east' }, commandOptions));
   let moveIssued = false;
   try {
-    results.push(await sendCommand(worldPath, 'move', { direction: 'forward', durationMs: 400 }));
     moveIssued = true;
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    results.push(await sendCommand(worldPath, 'move', { direction: 'forward', durationMs: 400 }, commandOptions));
+    await new Promise((resolve) => setTimeout(resolve, waitAfterMoveMs));
   } finally {
     if (moveIssued) {
-      results.push(await sendCommand(worldPath, 'stop'));
+      results.push(await sendCommand(worldPath, 'stop', {}, commandOptions));
     }
   }
-  results.push(await sendCommand(worldPath, 'status'));
+  results.push(await sendCommand(worldPath, 'status', {}, commandOptions));
   return results;
 }
 
@@ -152,16 +214,22 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   if (action === 'look') {
+    await requireFreshHeartbeat(worldPath);
     console.log(JSON.stringify(await sendCommand(worldPath, action, { direction: rest[0] }), null, 2));
     return;
   }
 
   if (action === 'move') {
+    await requireFreshHeartbeat(worldPath);
     console.log(JSON.stringify(await sendCommand(worldPath, action, {
       direction: rest[0],
       durationMs: rest[1] ? Number(rest[1]) : 400,
     }), null, 2));
     return;
+  }
+
+  if (action === 'spawn') {
+    await requireFreshHeartbeat(worldPath);
   }
 
   console.log(JSON.stringify(await sendCommand(worldPath, action), null, 2));

@@ -19,12 +19,12 @@
 - The copied test world is `New World - Remy LAN Test`.
 - The bridge app loaded in the duplicate world and writes state files.
 - Versioned Scarpet script `0.1.2` was verified live by `bridgeVersion`.
-- Versioned Scarpet script `0.1.3` changes spawn to execute as the human player before `player remy spawn`, so Remy should inherit the player's mode instead of using the server/script source.
+- Versioned Scarpet script `0.1.4` adds safer spawn source, fake-player-only control, lifecycle stop hooks, fresh heartbeat gating, and lost-ack stop coverage.
 - Local controller tests pass: 9/9.
 
 ## Current Blocker
 
-Live `0.1.2` bridge status works in the copied world. Runtime proof is pending deployment/reload of `0.1.3`, then the approved spawn/read/look/brief-move/stop sequence.
+Live `0.1.2` bridge status works in the copied world. Runtime proof is pending deployment/reload of `0.1.4`, then the approved spawn/read/look/brief-move/stop sequence.
 
 ## Live Proof Status
 
@@ -37,5 +37,5 @@ Completed:
 Pending:
 
 - Reload script in game.
-- Verify `bridgeVersion: 0.1.3` in `state.json`.
+- Verify fresh `bridgeVersion: 0.1.4` in `heartbeat.json` and `state.json`.
 - Run approved live sequence: spawn, status, bounded surroundings/inventory read, look, brief move, stop, final status.

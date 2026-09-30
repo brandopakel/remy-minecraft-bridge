@@ -4,8 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  assertSuccessfulAck,
+  assertFreshHeartbeat,
   bridgeDir,
   buildCommand,
+  expectedBridgeVersion,
   maxCommandTtlMs,
   readJsonIfPresent,
   resolveWorldPath,
@@ -21,6 +24,17 @@ async function makeWorld() {
 }
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function writeHeartbeat(world, fields = {}) {
+  const heartbeatPath = path.join(bridgeDir(world), 'heartbeat.json');
+  await mkdir(path.dirname(heartbeatPath), { recursive: true });
+  await writeFile(heartbeatPath, JSON.stringify({
+    bridgeVersion: expectedBridgeVersion,
+    unixMs: Date.now(),
+    worldFolder: path.basename(world),
+    ...fields,
+  }), 'utf8');
+}
 
 test('buildCommand rejects non-allowlisted actions', () => {
   assert.throws(() => buildCommand('attack'), /not allowlisted/);
@@ -47,6 +61,13 @@ test('buildCommand rejects bad move directions and unsafe ttls', () => {
   assert.throws(() => buildCommand('status', {}, { ttlMs: maxCommandTtlMs + 1 }), /ttlMs/);
   const command = buildCommand('status', {}, { now: 1000, id: 'ttl', ttlMs: 250 });
   assert.equal(command.expiresMs, 1250);
+});
+
+test('buildCommand rejects reserved and action-specific field overrides', () => {
+  assert.throws(() => buildCommand('status', { action: 'move' }), /reserved/);
+  assert.throws(() => buildCommand('status', { expiresMs: 999999999 }), /reserved/);
+  assert.throws(() => buildCommand('look', { direction: 'north', durationMs: 999999 }), /not valid/);
+  assert.throws(() => buildCommand('spawn', { direction: 'north' }), /not valid/);
 });
 
 test('resolveWorldPath confines writes to save directories', async () => {
@@ -132,6 +153,69 @@ test('sendCommand ignores replayed and malformed acknowledgments', async () => {
   }
 });
 
+test('sendCommand rejects failed, rejected, and expired acknowledgments', async () => {
+  assert.throws(() => assertSuccessfulAck({ id: 'x', action: 'move', status: 'failed', detail: { success: 0 } }), /failed/);
+  assert.throws(() => assertSuccessfulAck({ id: 'x', action: 'move', status: 'rejected', detail: { error: 'bad' } }), /rejected/);
+  assert.throws(() => assertSuccessfulAck({ id: 'x', action: 'move', status: 'expired', detail: { error: 'old' } }), /expired/);
+
+  const { root, world } = await makeWorld();
+  try {
+    const pending = sendCommand(world, 'move', { direction: 'forward', durationMs: 400 }, {
+      id: 'move-failed',
+      now: 1000,
+      ttlMs: 5000,
+      timeoutMs: 1000,
+      pollIntervalMs: 20,
+    });
+
+    const commandPath = path.join(bridgeDir(world), 'command.json');
+    for (let i = 0; i < 25; i += 1) {
+      if (await readJsonIfPresent(commandPath)) break;
+      await delay(20);
+    }
+
+    const ackPath = path.join(bridgeDir(world), 'ack.json');
+    await writeFile(ackPath, JSON.stringify({
+      id: 'move-failed',
+      action: 'move',
+      status: 'ok',
+      detail: { success: 0, error: 'movement failed' },
+    }), 'utf8');
+    await assert.rejects(pending, /Command move failed/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('assertFreshHeartbeat validates version, world, and age', async () => {
+  const { root, world } = await makeWorld();
+  try {
+    const now = Date.now();
+    assert.equal(assertFreshHeartbeat({
+      bridgeVersion: expectedBridgeVersion,
+      unixMs: now,
+      worldFolder: path.basename(world),
+    }, world, { now }).bridgeVersion, expectedBridgeVersion);
+    assert.throws(() => assertFreshHeartbeat({
+      bridgeVersion: '0.0.0',
+      unixMs: now,
+      worldFolder: path.basename(world),
+    }, world, { now }), /does not match expected/);
+    assert.throws(() => assertFreshHeartbeat({
+      bridgeVersion: expectedBridgeVersion,
+      unixMs: now,
+      worldFolder: 'Other World',
+    }, world, { now }), /does not match/);
+    assert.throws(() => assertFreshHeartbeat({
+      bridgeVersion: expectedBridgeVersion,
+      unixMs: now - 10000,
+      worldFolder: path.basename(world),
+    }, world, { now, maxAgeMs: 1000 }), /stale/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('runSmoke sends explicit stop after bounded movement', async () => {
   const { root, world } = await makeWorld();
   const seen = [];
@@ -157,6 +241,7 @@ test('runSmoke sends explicit stop after bounded movement', async () => {
   }
 
   try {
+    await writeHeartbeat(world);
     const responding = responder();
     const results = await runSmoke(world);
     await responding;
@@ -168,15 +253,68 @@ test('runSmoke sends explicit stop after bounded movement', async () => {
   }
 });
 
+test('runSmoke sends stop even when movement acknowledgment is lost', async () => {
+  const { root, world } = await makeWorld();
+  const seen = [];
+  async function responder() {
+    const commandPath = path.join(bridgeDir(world), 'command.json');
+    const ackPath = path.join(bridgeDir(world), 'ack.json');
+    let lastId = null;
+    const deadline = Date.now() + 3000;
+    while (seen.length < 5 && Date.now() < deadline) {
+      const command = await readJsonIfPresent(commandPath);
+      if (command && command.id !== lastId) {
+        lastId = command.id;
+        seen.push(command);
+        if (command.action !== 'move') {
+          await writeFile(ackPath, JSON.stringify({
+            id: command.id,
+            action: command.action,
+            status: 'ok',
+            detail: { success: 1 },
+            state: { online: command.action !== 'stop', moving: command.action === 'move' },
+          }), 'utf8');
+        }
+      }
+      await delay(20);
+    }
+  }
+
+  try {
+    await writeHeartbeat(world);
+    const responding = responder();
+    await assert.rejects(runSmoke(world, {
+      commandOptions: { timeoutMs: 120, pollIntervalMs: 10 },
+      waitAfterMoveMs: 20,
+    }), /Timed out waiting for ack for move/);
+    await responding;
+    assert.deepEqual(seen.map((command) => command.action), ['spawn', 'status', 'look', 'move', 'stop']);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('Scarpet script exposes version and keeps the safety allowlist narrow', async () => {
   const script = await readFile(new URL('../scarpet/remy_bridge.sc', import.meta.url), 'utf8');
-  assert.match(script, /global_bridge_version = '0\.1\.3'/);
+  assert.match(script, /global_bridge_version = '0\.1\.4'/);
   assert.match(script, /'bridgeVersion' -> global_bridge_version/);
+  assert.match(script, /'worldPath' -> system_info\('world_path'\)/);
+  assert.match(script, /__heartbeat\(reason\)/);
+  assert.match(script, /__on_start\(\)/);
+  assert.match(script, /__on_close\(\)/);
+  assert.match(script, /query\(p, 'player_type'\)/);
+  assert.match(script, /player_type != 'fake'/);
+  assert.match(script, /in_dimension\(p, __surroundings\(center\)\)/);
   assert.match(script, /allowed = \['spawn', 'status', 'look', 'move', 'stop'\]/);
-  assert.match(script, /global_is_moving && global_move_expires_ms && now_ms > global_move_expires_ms/);
+  assert.match(script, /global_is_moving && global_move_expires_ms && now_ms >= global_move_expires_ms/);
   assert.match(script, /__stop_remy\(\)/);
+  assert.match(script, /result = __command_result\(__run_player\('stop'\)\)/);
+  assert.match(script, /if\(result:'success'/);
+  assert.match(script, /pre_stop = __stop_remy\(\)/);
+  assert.match(script, /expires_ms - created_ms > global_max_command_ttl_ms/);
+  assert.match(script, /status = if\(detail:'success' == 0 \|\| detail:'error', 'failed', 'ok'\)/);
   assert.match(script, /'player ' \+ global_remy_name/);
   assert.match(script, /execute as @a\[name!=' \+ global_remy_name \+ ',limit=1\] at @s run player/);
   assert.doesNotMatch(script, /spawn in survival/);
-  assert.doesNotMatch(script, /attack|drop|use|hotbar|mine|place/);
+  assert.doesNotMatch(script, /__run_player\('(attack|drop|use|hotbar|mine|place)/);
 });

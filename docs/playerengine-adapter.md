@@ -43,4 +43,17 @@ PlayerEngine load audit from the verified jar:
 
 For first runtime staging, copy `config/playerengine/server_player2.json` into the duplicate profile's `playerengine/server_player2.json` before launching with PlayerEngine. This disables mod-intelligence startup inspection/enrichment while leaving the adapter's deterministic `/remyengine` commands available.
 
-Runtime install has not been performed yet because the duplicate Minecraft process was still running when the adapter finished compiling.
+## Install-Only Checkpoint
+
+Installed into the duplicate Homestead profile only after Minecraft was fully closed and the current `New World - Remy LAN Test` save was backed up.
+
+Installed files:
+
+- `mods/playerengine-fabric-1.20.1-1.4.0.jar`
+  - SHA-256: `0D160A4C5991DC40CEDA0889DA8C12E9997E60E5CB466BC2DA220CEDF12103CF`
+- `mods/remy-playerengine-adapter-0.1.0.jar`
+  - SHA-256: `B7CBBDE627B7DA753E7E19A993D9C11777E8042949646FABDF9D4B271D19A03E`
+- `playerengine/server_player2.json`
+  - SHA-256: `AA27DA90057054FCCF1139CA12710C9C9A3AB72B422DFF4F784F71432C72065F`
+
+No existing PlayerEngine config was present, so no config file needed to be backed up. Runtime compatibility has not been verified yet; next launch is the first PlayerEngine+adapter startup test.

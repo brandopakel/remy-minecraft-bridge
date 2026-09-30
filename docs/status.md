@@ -124,6 +124,7 @@ Completed:
 
 Not yet done:
 
-- PlayerEngine and the adapter have not been installed into the duplicate Minecraft profile because the duplicate game process was still running.
+- PlayerEngine `1.20.1-1.4.0`, `remy-playerengine-adapter-0.1.0`, and the mod-intelligence-disabled PlayerEngine config were installed into the duplicate profile only after Minecraft exited cleanly and the current test save was backed up.
+- The backup verification counted 183 source files and 183 backup files with matching total bytes. The exact local backup path is intentionally not committed to repository docs.
 - No runtime launch/test has been performed for the PlayerEngine adapter.
 - The adapter does not use PlayerEngine's natural-language/LLM/TTS/auth service path and has not implemented complex building.

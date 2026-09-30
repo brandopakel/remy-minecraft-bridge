@@ -6,9 +6,31 @@ import { fileURLToPath } from 'node:url';
 export const allowedActions = new Set(['spawn', 'status', 'look', 'move', 'stop']);
 export const lookDirections = new Set(['north', 'south', 'east', 'west', 'up', 'down']);
 export const moveDirections = new Set(['forward', 'backward', 'left', 'right']);
+export const maxMoveDurationMs = 1000;
+export const defaultCommandTtlMs = 5000;
+export const maxCommandTtlMs = 10000;
 
-export function bridgeDir(worldPath) {
-  return path.join(path.resolve(worldPath), 'scripts', 'remy_bridge.data');
+function isPathInside(child, parent) {
+  const relative = path.relative(parent, child);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+export function resolveWorldPath(worldPath, options = {}) {
+  const resolved = path.resolve(worldPath);
+  if (path.basename(path.dirname(resolved)).toLowerCase() !== 'saves') {
+    throw new Error('World path must be one save directory inside a saves folder');
+  }
+  if (options.allowedRoot) {
+    const allowedRoot = path.resolve(options.allowedRoot);
+    if (!isPathInside(resolved, allowedRoot)) {
+      throw new Error('World path is outside the allowed root');
+    }
+  }
+  return resolved;
+}
+
+export function bridgeDir(worldPath, options = {}) {
+  return path.join(resolveWorldPath(worldPath, options), 'scripts', 'remy_bridge.data');
 }
 
 export function buildCommand(action, fields = {}, options = {}) {
@@ -20,18 +42,23 @@ export function buildCommand(action, fields = {}, options = {}) {
     throw new Error('Invalid move direction');
   }
 
+  const ttlMs = options.ttlMs ?? defaultCommandTtlMs;
+  if (!Number.isFinite(ttlMs) || ttlMs <= 0 || ttlMs > maxCommandTtlMs) {
+    throw new Error(`Command ttlMs must be between 1 and ${maxCommandTtlMs}`);
+  }
+
   const now = options.now ?? Date.now();
   const id = options.id ?? randomUUID();
   const command = {
     id,
     action,
     createdMs: now,
-    expiresMs: now + (options.ttlMs ?? 5000),
+    expiresMs: now + ttlMs,
     ...fields,
   };
 
   if (action === 'move') {
-    command.durationMs = Math.max(1, Math.min(Number(command.durationMs || 400), 1000));
+    command.durationMs = Math.max(1, Math.min(Number(command.durationMs || 400), maxMoveDurationMs));
   }
 
   return command;
@@ -54,7 +81,7 @@ export async function writeJsonAtomic(file, value) {
 }
 
 export async function sendCommand(worldPath, action, fields = {}, options = {}) {
-  const dir = bridgeDir(worldPath);
+  const dir = bridgeDir(worldPath, options);
   const commandPath = path.join(dir, 'command.json');
   const ackPath = path.join(dir, 'ack.json');
   const command = buildCommand(action, fields, options);
@@ -79,9 +106,16 @@ export async function runSmoke(worldPath) {
   results.push(await sendCommand(worldPath, 'spawn'));
   results.push(await sendCommand(worldPath, 'status'));
   results.push(await sendCommand(worldPath, 'look', { direction: 'east' }));
-  results.push(await sendCommand(worldPath, 'move', { direction: 'forward', durationMs: 400 }));
-  await new Promise((resolve) => setTimeout(resolve, 700));
-  results.push(await sendCommand(worldPath, 'stop'));
+  let moveIssued = false;
+  try {
+    results.push(await sendCommand(worldPath, 'move', { direction: 'forward', durationMs: 400 }));
+    moveIssued = true;
+    await new Promise((resolve) => setTimeout(resolve, 700));
+  } finally {
+    if (moveIssued) {
+      results.push(await sendCommand(worldPath, 'stop'));
+    }
+  }
   results.push(await sendCommand(worldPath, 'status'));
   return results;
 }

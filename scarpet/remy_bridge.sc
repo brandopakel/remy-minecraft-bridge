@@ -4,6 +4,7 @@ __config() -> {
 };
 
 global_remy_name = 'remy';
+global_bridge_version = '0.1.2';
 global_last_command_id = null;
 global_next_poll_tick = 0;
 global_move_expires_ms = 0;
@@ -73,6 +74,7 @@ __state() -> (
         'worldFolder' -> system_info('world_folder'),
         'gameVersion' -> system_info('game_version'),
         'gameTarget' -> system_info('game_target'),
+        'bridgeVersion' -> global_bridge_version,
         'remy' -> global_remy_name,
         'online' -> bool(p),
         'moving' -> global_is_moving,
@@ -130,8 +132,12 @@ __move(cmd, now_ms) -> (
     );
     duration_ms = min(max(number(cmd:'durationMs'), 1), 1000);
     result = __command_result(__run_player('move ' + direction));
-    global_is_moving = true;
-    global_move_expires_ms = min(now_ms + duration_ms, number(cmd:'expiresMs'));
+    if(result:'success',
+        global_is_moving = true;
+        global_move_expires_ms = min(now_ms + duration_ms, number(cmd:'expiresMs')),
+        global_is_moving = false;
+        global_move_expires_ms = 0
+    );
     result:'durationMs' = duration_ms;
     result:'autoStopAtMs' = global_move_expires_ms;
     result

@@ -18,6 +18,7 @@ import net.minecraft.entity.SpawnGroup;
 import net.minecraft.entity.attribute.DefaultAttributeContainer;
 import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.mob.ZombieEntity;
+import net.minecraft.block.BlockState;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
 import net.minecraft.server.MinecraftServer;
@@ -29,6 +30,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.TypeFilter;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,6 +42,9 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
     public static final String MOD_ID = "remy_playerengine_adapter";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
     public static final Identifier REMY_ID = id("remy_npc");
+    private static final int NO_PROGRESS_LIMIT_TICKS = 80;
+    private static final int NAVIGATION_SAMPLE_INTERVAL_TICKS = 10;
+    private static final int SPAWN_SEARCH_RADIUS = 5;
 
     public static final EntityType<RemyEntity> REMY = FabricEntityTypeBuilder
             .<RemyEntity>createLiving()
@@ -55,6 +60,12 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
     private static boolean followActive;
     private static UUID followOwner;
     private static int followRefreshTicks;
+    private static String activeMode = "idle";
+    private static UUID activeOwner;
+    private static BlockPos activeTarget;
+    private static Vec3d lastObservedPosition;
+    private static int activeTicks;
+    private static int noProgressTicks;
 
     public static Identifier id(String path) {
         return new Identifier(MOD_ID, path);
@@ -86,6 +97,7 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
         dispatcher.register(CommandManager.literal("remyengine")
                 .requires(source -> source.getPlayer() != null)
                 .then(CommandManager.literal("spawn").executes(context -> spawn(context.getSource())))
+                .then(CommandManager.literal("relocate").executes(context -> relocate(context.getSource())))
                 .then(CommandManager.literal("come").executes(context -> come(context.getSource())))
                 .then(CommandManager.literal("follow").executes(context -> follow(context.getSource())))
                 .then(CommandManager.literal("stop").executes(context -> stop(context.getSource())))
@@ -103,13 +115,29 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
             return 1;
         }
 
-        ServerWorld world = owner.getServerWorld();
-        BlockPos spawnPos = owner.getBlockPos().add(1, 0, 1);
-        RemyEntity remy = new RemyEntity(REMY, world);
-        remy.setOwner(owner.getUuid(), owner.getGameProfile().getName());
-        remy.refreshPositionAndAngles(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, owner.getYaw(), 0.0f);
-        world.spawnEntity(remy);
-        source.sendFeedback(() -> Text.literal("Spawned Remy at " + shortPos(remy.getBlockPos())), false);
+        Optional<RemyEntity> spawned = createRemyNear(owner);
+        if (spawned.isEmpty()) {
+            source.sendFeedback(() -> Text.literal("No clear supported space found near you for Remy"), false);
+            return 0;
+        }
+
+        source.sendFeedback(() -> Text.literal("Spawned Remy at " + shortPos(spawned.get().getBlockPos())), false);
+        return 1;
+    }
+
+    private static int relocate(ServerCommandSource source) {
+        ServerPlayerEntity owner = requirePlayer(source);
+        Optional<BlockPos> target = findSafeStandPos(owner);
+        if (target.isEmpty()) {
+            source.sendFeedback(() -> Text.literal("No clear supported space found near you for Remy"), false);
+            return 0;
+        }
+
+        RemyEntity remy = findOwnedRemy(owner).orElseGet(() -> createRemyNear(owner).orElseThrow());
+        stopRemy(remy);
+        placeRemy(remy, target.get(), owner.getYaw());
+        clearActiveGoal();
+        source.sendFeedback(() -> Text.literal("Relocated Remy to " + shortPos(remy.getBlockPos())), false);
         return 1;
     }
 
@@ -118,7 +146,7 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
         RemyEntity remy = findOrSpawn(owner);
         followActive = false;
         followOwner = null;
-        sendGoalNear(remy, owner.getBlockPos(), 2);
+        startNavigation("come", owner, remy, owner.getBlockPos());
         source.sendFeedback(() -> Text.literal("Remy is coming to " + shortPos(owner.getBlockPos())), false);
         return 1;
     }
@@ -129,7 +157,7 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
         followActive = true;
         followOwner = owner.getUuid();
         followRefreshTicks = 0;
-        sendGoalNear(remy, owner.getBlockPos(), 2);
+        startNavigation("follow", owner, remy, owner.getBlockPos());
         source.sendFeedback(() -> Text.literal("Remy follow enabled"), false);
         return 1;
     }
@@ -137,8 +165,7 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
     private static int stop(ServerCommandSource source) {
         ServerPlayerEntity owner = requirePlayer(source);
         findOwnedRemy(owner).ifPresent(RemyPlayerEngineAdapter::stopRemy);
-        followActive = false;
-        followOwner = null;
+        clearActiveGoal();
         source.sendFeedback(() -> Text.literal("Remy stopped"), false);
         return 1;
     }
@@ -155,8 +182,11 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
         IBaritone baritone = entity.getBaritone();
         String message = "Remy at " + shortPos(entity.getBlockPos())
                 + ", follow=" + followActive
+                + ", mode=" + activeMode
                 + ", pathing=" + baritone.getPathingBehavior().isPathing()
-                + ", goal=" + baritone.getPathingBehavior().getGoal();
+                + ", goal=" + baritone.getPathingBehavior().getGoal()
+                + ", noProgressTicks=" + noProgressTicks
+                + ", clearance=" + standStatus(owner.getServerWorld(), entity.getBlockPos());
         source.sendFeedback(() -> Text.literal(message), false);
         return 1;
     }
@@ -167,34 +197,33 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
     }
 
     private static void serverTick(MinecraftServer server) {
-        if (!followActive || followOwner == null) {
+        if (activeOwner == null) {
             return;
         }
 
-        ServerPlayerEntity owner = server.getPlayerManager().getPlayer(followOwner);
+        ServerPlayerEntity owner = server.getPlayerManager().getPlayer(activeOwner);
         if (owner == null) {
             stopAllRemys(server);
-            followActive = false;
-            followOwner = null;
+            clearActiveGoal();
             return;
         }
 
-        if (followRefreshTicks++ % 20 != 0) {
+        Optional<RemyEntity> remy = findOwnedRemy(owner);
+        if (remy.isEmpty()) {
+            clearActiveGoal();
             return;
         }
 
-        findOwnedRemy(owner).ifPresent(remy -> {
-            if (remy.squaredDistanceTo(owner) > 9.0) {
-                sendGoalNear(remy, owner.getBlockPos(), 2);
-            }
-        });
+        if (followActive && followRefreshTicks++ % 20 == 0 && remy.get().squaredDistanceTo(owner) > 9.0) {
+            activeTarget = owner.getBlockPos();
+            sendGoalNear(remy.get(), activeTarget, 2);
+        }
+
+        monitorNavigation(owner, remy.get());
     }
 
     private static RemyEntity findOrSpawn(ServerPlayerEntity owner) {
-        return findOwnedRemy(owner).orElseGet(() -> {
-            spawn(owner.getCommandSource());
-            return findOwnedRemy(owner).orElseThrow();
-        });
+        return findOwnedRemy(owner).orElseGet(() -> createRemyNear(owner).orElseThrow());
     }
 
     private static Optional<RemyEntity> findOwnedRemy(ServerPlayerEntity owner) {
@@ -209,6 +238,142 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
     private static void sendGoalNear(RemyEntity remy, BlockPos pos, int range) {
         IBaritone baritone = remy.getBaritone();
         baritone.getCustomGoalProcess().setGoalAndPath(new GoalNear(pos, range));
+    }
+
+    private static void startNavigation(String mode, ServerPlayerEntity owner, RemyEntity remy, BlockPos target) {
+        activeMode = mode;
+        activeOwner = owner.getUuid();
+        activeTarget = target;
+        lastObservedPosition = remy.getPos();
+        activeTicks = 0;
+        noProgressTicks = 0;
+        sendGoalNear(remy, target, 2);
+    }
+
+    private static void monitorNavigation(ServerPlayerEntity owner, RemyEntity remy) {
+        activeTicks++;
+        if (activeTicks % NAVIGATION_SAMPLE_INTERVAL_TICKS != 0) {
+            return;
+        }
+
+        Vec3d current = remy.getPos();
+        double movedSquared = lastObservedPosition == null ? Double.MAX_VALUE : current.squaredDistanceTo(lastObservedPosition);
+        if (movedSquared < 0.0004) {
+            noProgressTicks += NAVIGATION_SAMPLE_INTERVAL_TICKS;
+        } else {
+            noProgressTicks = 0;
+        }
+        lastObservedPosition = current;
+
+        if ("come".equals(activeMode) && activeTarget != null && squaredBlockDistance(remy.getBlockPos(), activeTarget) <= 6.25) {
+            stopRemy(remy);
+            owner.sendMessage(Text.literal("Remy arrived near " + shortPos(activeTarget)), false);
+            clearActiveGoal();
+            return;
+        }
+
+        if (noProgressTicks >= NO_PROGRESS_LIMIT_TICKS) {
+            String status = standStatus(owner.getServerWorld(), remy.getBlockPos());
+            stopRemy(remy);
+            owner.sendMessage(Text.literal("Remy stopped: no movement progress at "
+                    + shortPos(remy.getBlockPos()) + " (" + status + ")"), false);
+            clearActiveGoal();
+        }
+    }
+
+    private static Optional<RemyEntity> createRemyNear(ServerPlayerEntity owner) {
+        Optional<BlockPos> spawnPos = findSafeStandPos(owner);
+        if (spawnPos.isEmpty()) {
+            return Optional.empty();
+        }
+
+        ServerWorld world = owner.getServerWorld();
+        RemyEntity remy = new RemyEntity(REMY, world);
+        remy.setOwner(owner.getUuid(), owner.getGameProfile().getName());
+        placeRemy(remy, spawnPos.get(), owner.getYaw());
+        world.spawnEntity(remy);
+        return Optional.of(remy);
+    }
+
+    private static void placeRemy(RemyEntity remy, BlockPos pos, float yaw) {
+        remy.refreshPositionAndAngles(pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, yaw, 0.0f);
+        remy.setVelocity(Vec3d.ZERO);
+    }
+
+    private static Optional<BlockPos> findSafeStandPos(ServerPlayerEntity owner) {
+        ServerWorld world = owner.getServerWorld();
+        BlockPos origin = owner.getBlockPos();
+
+        for (int radius = 1; radius <= SPAWN_SEARCH_RADIUS; radius++) {
+            for (int dy : new int[]{0, 1, -1, 2, -2}) {
+                for (int dx = -radius; dx <= radius; dx++) {
+                    for (int dz = -radius; dz <= radius; dz++) {
+                        if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) {
+                            continue;
+                        }
+                        BlockPos candidate = origin.add(dx, dy, dz);
+                        if (isSafeStandPos(world, candidate)) {
+                            return Optional.of(candidate);
+                        }
+                    }
+                }
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private static boolean isSafeStandPos(ServerWorld world, BlockPos feet) {
+        return hasSupport(world, feet.down())
+                && isOpen(world, feet)
+                && isOpen(world, feet.up())
+                && world.getFluidState(feet).isEmpty()
+                && world.getFluidState(feet.up()).isEmpty();
+    }
+
+    private static boolean hasSupport(ServerWorld world, BlockPos pos) {
+        BlockState state = world.getBlockState(pos);
+        return !state.getCollisionShape(world, pos).isEmpty();
+    }
+
+    private static boolean isOpen(ServerWorld world, BlockPos pos) {
+        BlockState state = world.getBlockState(pos);
+        return state.getCollisionShape(world, pos).isEmpty();
+    }
+
+    private static String standStatus(ServerWorld world, BlockPos feet) {
+        if (!hasSupport(world, feet.down())) {
+            return "no_floor";
+        }
+        if (!isOpen(world, feet)) {
+            return "blocked_feet";
+        }
+        if (!isOpen(world, feet.up())) {
+            return "blocked_head";
+        }
+        if (!world.getFluidState(feet).isEmpty() || !world.getFluidState(feet.up()).isEmpty()) {
+            return "fluid";
+        }
+        return "clear";
+    }
+
+    private static double squaredBlockDistance(BlockPos a, BlockPos b) {
+        double dx = a.getX() - b.getX();
+        double dy = a.getY() - b.getY();
+        double dz = a.getZ() - b.getZ();
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static void clearActiveGoal() {
+        followActive = false;
+        followOwner = null;
+        followRefreshTicks = 0;
+        activeMode = "idle";
+        activeOwner = null;
+        activeTarget = null;
+        lastObservedPosition = null;
+        activeTicks = 0;
+        noProgressTicks = 0;
     }
 
     private static void stopAllRemys(MinecraftServer server) {

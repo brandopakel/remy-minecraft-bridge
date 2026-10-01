@@ -1,27 +1,53 @@
 # remy-minecraft-bridge
 
-This is a small local proof-of-control bridge for testing `remy` as a separate teammate in a copied Homestead Minecraft world.
+This repository tracks local experiments for bringing `remy` into a Homestead Minecraft world as a separate teammate.
 
-The design uses the official Carpet mod for Minecraft 1.20/1.20.1 and a world-local Scarpet app. A local Node controller writes JSON command files into the copied world's `scripts/remy_bridge.data` directory, and the Scarpet app acknowledges commands with command-specific JSON files. There is no network listener, public tunnel, RCON, new credential, or second Minecraft client.
+## Current Track: PlayerEngine Adapter
 
-Current scope:
+The active track is a small self-authored Fabric mod, `remy-playerengine-adapter`, installed only in the duplicated Remy Homestead profile. It reuses the official PlayerEngine Fabric `1.20.1-1.4.0` lower-level navigation APIs instead of continuing custom Scarpet movement/pathfinding.
+
+Current adapter commands:
+
+- `/remyengine spawn`
+- `/remyengine status`
+- `/remyengine come`
+- `/remyengine follow`
+- `/remyengine stop`
+- `/remyengine say <message>`
+
+Verified so far:
+
+- Official PlayerEngine jar was downloaded, hashed, and staged in the duplicate profile only.
+- The adapter builds and loads with Homestead.
+- The hardened PlayerEngine config disables call-by-name chat, owner-offline continuation, ModIntelligence startup inspection/enrichment, RAG/live memory helpers, deep-check helpers, and TTS ack.
+- After restart, logs showed `payerMode=OWNER_PAYS_ALL`, `dedicated=false`, `ownerOfflineContinue=false`, `callByNameChat=false`, `ModIntelligence: disabled by config`, and no fresh Player2 device-flow prompt in the observed startup window.
+
+Not proven yet:
+
+- Runtime spawn/come/follow/stop behavior.
+- Long-run guarantee that no PlayerEngine AI/auth/network feature can be triggered by unrelated commands. The adapter avoids PlayerEngine controller/API/auth/LLM/TTS classes, but the upstream jar still registers its broader systems. Do not use `/playerengine`, Player2 sign-in, voice AI, or natural-language PlayerEngine features for this track.
+- Complex building or full autonomy.
+
+## Legacy Track: Carpet/Scarpet Bridge
+
+The previous track used official Carpet plus a world-local Scarpet app and a local Node controller. It remains useful as recovery/history, but it is not the active movement path.
+
+Legacy capabilities that were proven in the copied world:
 
 - Spawn a Carpet fake player named `remy`.
-- Read position, look vector, gamemode, inventory, and a bounded 3x3x3 surrounding block sample.
-- Look in cardinal/up/down directions.
-- Move briefly, capped at 1000 ms, then stop automatically.
-- Owner-only in-game commands: `/remy_bridge follow`, `/remy_bridge stop`, `/remy_bridge status`, plus chat forms `remy follow`, `remy stop`, and `remy status`.
-- Follow as a tick-local goal with stop priority, bounded distance/vertical checks, conservative hazard stops, and bounded local supported-neighbor navigation.
-- Offline blueprint planning for a deterministic `small_shelter` spec, including palette validation, material counts, ordered placement steps, reconciliation, and cancellation generation.
-- Stop immediately on request or when a command goes stale.
-- Avoid shared overwrite-style state files so Windows readers cannot block Carpet's delete-and-replace file writes.
-- Keep heartbeat files bounded to a small rotating slot set instead of writing one file per tick.
-- Prune old command acknowledgment files from the controller side.
+- Read position, gamemode, inventory, and bounded surroundings.
+- Look, briefly move, and stop with command acknowledgments.
 
-Not in scope yet:
+Legacy limitations:
 
-- Reliable pathfinding around obstacles, live construction, mining, attacking, using items, dropping items, hotbar changes, inventory mutation, or broad autonomy.
-- Original Homestead profile/world mutation.
-- Publishing Minecraft saves, player data, logs, jars, or Homestead pack content.
+- Custom follow/pathfinding hit Scarpet runtime type issues and was paused.
+- It should not be used for new movement tests unless deliberately revived.
 
-See `docs/setup.md`, `docs/architecture.md`, and `docs/blueprints.md` for the exact test flow and safety model.
+## Project Boundaries
+
+- Preserve the original Homestead profile/worlds.
+- Treat the current Remy world as valuable user progress and back it up before risky changes.
+- Do not publish Minecraft saves, player data, logs, third-party jars, credentials, or local machine paths.
+- Keep Git pushes milestone-based: useful tested states, not every small scratch change.
+
+See `docs/setup.md`, `docs/playerengine-adapter.md`, `docs/status.md`, and `docs/architecture.md` for the current test flow and safety notes.

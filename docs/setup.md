@@ -1,59 +1,94 @@
 # Setup
 
-## Prerequisites
+## Active PlayerEngine Track
+
+Use the duplicate Remy Homestead profile only. Do not install this track into the original Homestead profile.
+
+Prerequisites:
 
 - Homestead pack version `1.3.7`.
 - Minecraft `1.20.1`.
-- Fabric loader compatible with the Homestead instance.
 - Java 17 with enough memory for Homestead. The pack docs recommend 6-8 GB allocated.
-- Official Carpet release `1.4.112` for Minecraft `1.20` / `1.20.1`.
-- Node.js 20 or newer for the local controller.
+- Fabric loader compatible with the duplicated Homestead instance.
+- Official PlayerEngine Fabric `1.20.1-1.4.0`.
+- Architectury `9.2.14` and Fabric API already present in the Homestead duplicate profile.
+- Self-authored `remy-playerengine-adapter-0.1.0.jar`.
 
-## Isolated Test Flow
+Installed duplicate-profile files:
 
-1. Make sure the original Homestead game is fully closed.
-2. Use a duplicate launcher profile, not the original profile.
-3. Install the official Carpet jar into only the duplicate profile's `mods` folder.
-4. Copy only the existing Remy LAN test save into the duplicate profile's `saves` folder.
-5. Copy `scarpet/remy_bridge.sc` into the copied save's `scripts` folder.
-6. Launch the duplicate profile and open the copied save.
-7. Create a local owner file in the copied world's app data folder. This file is not committed:
+- `mods/playerengine-fabric-1.20.1-1.4.0.jar`
+- `mods/remy-playerengine-adapter-0.1.0.jar`
+- `playerengine/server_player2.json`
 
-   ```json
-   {
-     "ownerName": "<your Minecraft name>"
-   }
-   ```
+The template at `config/playerengine/server_player2.json` is the hardened config used for the duplicate profile. It disables call-by-name chat, owner-offline continuation, ModIntelligence startup inspection/enrichment, RAG/live memory helpers, deep-check helpers, and TTS ack.
 
-8. If the app does not autoload, run this in-game once:
+Runtime startup verification:
 
-   ```text
-   /script load remy_bridge
-   ```
+1. Back up the current Remy world before risky changes.
+2. Launch the duplicate Homestead profile.
+3. Open the Remy world.
+4. Inspect `latest.log` before testing commands.
 
-9. From this repository, run:
+Expected startup evidence:
 
-   ```powershell
-   node .\src\controller.mjs --world "<copied-save-path>" smoke
-   ```
-
-The smoke test sends: `spawn`, `status`, `look east`, short `move forward`, `stop`, `status`.
-
-## Manual Commands
-
-```powershell
-node .\src\controller.mjs --world "<copied-save-path>" status
-node .\src\controller.mjs --world "<copied-save-path>" spawn
-node .\src\controller.mjs --world "<copied-save-path>" look north
-node .\src\controller.mjs --world "<copied-save-path>" move forward 400
-node .\src\controller.mjs --world "<copied-save-path>" stop
+```text
+Player2 server config: payerMode=OWNER_PAYS_ALL dedicated=false ownerOfflineContinue=false callByNameChat=false
+Player2 ModIntelligence config: enabled=false enrichmentEnabled=false
+Remy PlayerEngine adapter initialized
+ModIntelligence: disabled by config
 ```
 
-Movement duration is capped at 1000 ms in both the controller and the Scarpet app.
+Unexpected evidence that should stop testing:
 
-## In-Game Commands
+```text
+Attempting local login
+Starting web device flow
+player2.game
+Player2 HTTP
+```
 
-These commands are accepted only from the configured owner player:
+Do not complete Player2 sign-in for this deterministic adapter test.
+
+Manual test commands:
+
+```text
+/remyengine status
+/remyengine spawn
+/remyengine status
+/remyengine come
+/remyengine stop
+/remyengine status
+```
+
+Only test `/remyengine follow` after spawn/come/stop are verified. Do not use `/playerengine`, Player2 natural-language commands, voice AI, or old Scarpet commands during PlayerEngine adapter verification.
+
+## Build
+
+The adapter builds with Gradle:
+
+```powershell
+.\gradlew.bat --no-daemon build
+```
+
+Build outputs must not be committed except through intentional release artifacts. Third-party jars, Minecraft saves, logs, player data, and local machine paths stay out of the repository.
+
+## Legacy Carpet/Scarpet Track
+
+The older Carpet bridge remains in the repo for recovery/history. It is not the active movement track.
+
+Legacy prerequisites:
+
+- Official Carpet release `1.4.112` for Minecraft `1.20` / `1.20.1`.
+- Node.js 20 or newer for the local file controller.
+
+Legacy flow:
+
+1. Copy `scarpet/remy_bridge.sc` into the copied world's `scripts` folder.
+2. Configure the owner file in the copied world's app data folder. Do not commit it.
+3. Load the app with `/script load remy_bridge` if needed.
+4. Use the Node controller only when deliberately testing the legacy bridge.
+
+Legacy commands:
 
 ```text
 /remy_bridge follow
@@ -64,4 +99,4 @@ remy stop
 remy status
 ```
 
-The plain chat forms are consumed by the Scarpet app when they match exactly. The follow goal uses simple local steering and stops rather than mining, placing, teleporting, or forcing through hazards when blocked.
+The legacy bridge proved spawn/read/look/short-move/stop, but custom follow/pathfinding is paused after runtime type issues.

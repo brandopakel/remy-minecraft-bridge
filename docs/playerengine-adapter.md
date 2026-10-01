@@ -45,8 +45,6 @@ For first runtime staging, copy `config/playerengine/server_player2.json` into t
 
 ## Install-Only Checkpoint
 
-Installed into the duplicate Homestead profile only after Minecraft was fully closed and the current `New World - Remy LAN Test` save was backed up.
-
 Installed files:
 
 - `mods/playerengine-fabric-1.20.1-1.4.0.jar`
@@ -54,6 +52,12 @@ Installed files:
 - `mods/remy-playerengine-adapter-0.1.0.jar`
   - SHA-256: `B7CBBDE627B7DA753E7E19A993D9C11777E8042949646FABDF9D4B271D19A03E`
 - `playerengine/server_player2.json`
-  - SHA-256: `AA27DA90057054FCCF1139CA12710C9C9A3AB72B422DFF4F784F71432C72065F`
+  - SHA-256: `7DF974B912AEFFCD4789F89307995C43CFB613B0B99F5A85602CBD224585597B`
 
-No existing PlayerEngine config was present, so no config file needed to be backed up. Runtime compatibility has not been verified yet; next launch is the first PlayerEngine+adapter startup test.
+The current running session loaded PlayerEngine and the adapter, but it also triggered PlayerEngine's Player2 device-flow prompt before the hardened config had been verified across a clean restart. No Player2 sign-in should be completed for this deterministic adapter test.
+
+Fresh post-progress backup was completed after Minecraft fully exited: 186 files, 37,057,807 bytes, source/backup SHA-256 manifests matched. The local backup manifest stays outside the public repo.
+
+The next launch must confirm the hardened config is active and that no Player2 auth prompt or heartbeat starts during an initial observation window.
+
+Runtime compatibility has not been verified yet. Treat this as installed/staged in the duplicate profile, not proven.

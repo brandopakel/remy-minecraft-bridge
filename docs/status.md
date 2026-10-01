@@ -122,9 +122,12 @@ Completed:
 - Audited PlayerEngine startup enough to identify automatic local mod-intelligence inspection as the main first-launch side effect to suppress.
 - Added profile-local config template `config/playerengine/server_player2.json` with mod-intelligence disabled for deterministic adapter testing.
 
-Not yet done:
+Current night checkpoint:
 
-- PlayerEngine `1.20.1-1.4.0`, `remy-playerengine-adapter-0.1.0`, and the mod-intelligence-disabled PlayerEngine config were installed into the duplicate profile only after Minecraft exited cleanly and the current test save was backed up.
-- The backup verification counted 183 source files and 183 backup files with matching total bytes. The exact local backup path is intentionally not committed to repository docs.
-- No runtime launch/test has been performed for the PlayerEngine adapter.
-- The adapter does not use PlayerEngine's natural-language/LLM/TTS/auth service path and has not implemented complex building.
+- The working world `New World - Remy LAN Test` in the duplicate `Homestead - Remy Carpet Test` profile is now treated as the main Remy world. It is no longer disposable.
+- PlayerEngine `1.20.1-1.4.0`, `remy-playerengine-adapter-0.1.0`, and the hardened `playerengine/server_player2.json` are present only in the duplicate profile.
+- The latest running session loaded PlayerEngine and the adapter, but PlayerEngine started a Player2 device-flow prompt before the hardened config could be verified through a clean restart.
+- The hardened config now sets `payerMode: OWNER_PAYS_ALL`, `dedicatedClientProxy: false`, `ownerOfflineServerContinuation: false`, `callByNameChat: false`, `modIntelligenceEnabled: false`, `modIntelligenceInspectOnLaunch: false`, `modIntelligenceEnrichmentEnabled: false`, and `botTtsPlaybackAckEnabled: false`.
+- Fresh post-progress backup completed after clean game exit: 186 files, 37,057,807 bytes, source/backup SHA-256 manifests matched. The local manifest is stored next to the backup folder and is intentionally not committed.
+- Runtime compatibility and suppression of Player2 auth/network prompts have not been verified after restart.
+- Do not use `/playerengine`, Player2 auth, voice AI, or the old `/remy_bridge` commands during the next verification. The intended first runtime commands remain the deterministic adapter commands: `/remyengine spawn`, `/remyengine status`, `/remyengine come`, `/remyengine stop`.

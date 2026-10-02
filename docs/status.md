@@ -125,9 +125,19 @@ Completed:
 Current night checkpoint:
 
 - The working world `New World - Remy LAN Test` in the duplicate `Homestead - Remy Carpet Test` profile is now treated as the main Remy world. It is no longer disposable.
-- PlayerEngine `1.20.1-1.4.0`, `remy-playerengine-adapter-0.1.0`, and the hardened `playerengine/server_player2.json` are present only in the duplicate profile.
-- The latest running session loaded PlayerEngine and the adapter, but PlayerEngine started a Player2 device-flow prompt before the hardened config could be verified through a clean restart.
+- Latest save/exit evidence for that world is clean: `latest.log` shows `Saving chunks`, `ThreadedAnvilChunkStorage: All dimensions are saved`, `[FastQuit] Finished saving "New World - Remy LAN Test"`, and `Stopping!`.
+- Fresh main-world backup completed after that clean exit:
+  - backup folder: `minecraft-save-backups/New World - Remy LAN Test-main-backup-20261001-201952`
+  - manifest: `minecraft-save-backups/New World - Remy LAN Test-main-backup-20261001-201952.manifest.json`
+  - restore path: `Homestead - Remy Carpet Test/saves/New World - Remy LAN Test`
+  - verified count/size: 186 files, 37,203,113 bytes
+  - verified matching SHA-256 hashes for `level.dat`, `level.dat_old`, `session.lock`, and `kubejs_persistent_data.nbt`
+- PlayerEngine `1.20.1-1.4.0`, `remy-playerengine-adapter-0.1.0`, and the hardened `config/playerengine/server_player2.json` are present only in the duplicate profile.
+- Installed PlayerEngine jar SHA-256: `0D160A4C5991DC40CEDA0889DA8C12E9997E60E5CB466BC2DA220CEDF12103CF`.
+- Installed adapter jar SHA-256: `0F63193D45966E632A7FD48D6D0FBDA56712862054116EDD02A79AB4B8FA122F`.
+- The previous adapter jar was preserved at `mods/remy-playerengine-adapter-0.1.0.jar.bak-20261001-202259`.
+- The old Scarpet bridge app was disabled, not deleted: `scripts/remy_bridge.sc.disabled-20261001-202259`. Existing `remy_bridge.sc.bak-*` recovery files remain in place.
 - The hardened config now sets `payerMode: OWNER_PAYS_ALL`, `dedicatedClientProxy: false`, `ownerOfflineServerContinuation: false`, `callByNameChat: false`, `modIntelligenceEnabled: false`, `modIntelligenceInspectOnLaunch: false`, `modIntelligenceEnrichmentEnabled: false`, and `botTtsPlaybackAckEnabled: false`.
-- Fresh post-progress backup completed after clean game exit: 186 files, 37,057,807 bytes, source/backup SHA-256 manifests matched. The local manifest is stored next to the backup folder and is intentionally not committed.
-- Runtime compatibility and suppression of Player2 auth/network prompts have not been verified after restart.
+- Local validation after the install checkpoint: `npm test` passed 42/42 and Gradle `build` succeeded.
+- Runtime compatibility and suppression of Player2 auth/network prompts have not been verified after this install checkpoint because no launch/runtime test was requested tonight.
 - Do not use `/playerengine`, Player2 auth, voice AI, or the old `/remy_bridge` commands during the next verification. The intended first runtime commands remain the deterministic adapter commands: `/remyengine spawn`, `/remyengine status`, `/remyengine come`, `/remyengine stop`.

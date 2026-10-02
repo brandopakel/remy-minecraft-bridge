@@ -18,9 +18,16 @@ Installed duplicate-profile files:
 
 - `mods/playerengine-fabric-1.20.1-1.4.0.jar`
 - `mods/remy-playerengine-adapter-0.1.0.jar`
-- `playerengine/server_player2.json`
+- `config/playerengine/server_player2.json`
 
 The template at `config/playerengine/server_player2.json` is the hardened config used for the duplicate profile. It disables call-by-name chat, owner-offline continuation, ModIntelligence startup inspection/enrichment, RAG/live memory helpers, deep-check helpers, and TTS ack.
+
+Current pause point:
+
+- `New World - Remy LAN Test` is now the main Remy world, not a disposable scratch save.
+- A fresh complete backup must exist before any further adapter or mod changes.
+- The old Scarpet bridge app is disabled in the save scripts folder as `remy_bridge.sc.disabled-*`; do not reactivate it while testing PlayerEngine.
+- The PlayerEngine adapter is installed but has not been runtime-verified after the latest install checkpoint.
 
 Runtime startup verification:
 

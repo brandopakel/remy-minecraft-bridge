@@ -43,7 +43,11 @@ public class RemyEntity extends ZombieEntity
         super(entityType, world);
         this.setStepHeight(0.6f);
         this.setMovementSpeed(0.4f);
-        this.setAiDisabled(true);
+        // Do NOT disable AI: PlayerEngine drives mob movement through a mixin on
+        // MobEntity#tickNewAi, which vanilla skips for NoAI mobs. With AI disabled
+        // Remy accepted path goals but never moved (verified in-game 2026-10-03).
+        // Vanilla goals are already empty via initGoals(), so nothing else runs.
+        this.setPersistent();
         this.setCanPickUpLoot(false);
         this.interactionManager = new LivingEntityInteractionManager(this);
         this.inventory = new LivingEntityInventory(this);
@@ -90,10 +94,27 @@ public class RemyEntity extends ZombieEntity
         this.setFireTicks(0);
         interactionManager.update();
         inventory.updateItems();
-        if (!this.getWorld().isClient()) {
+        // When a PlayerEngineController is attached, PlayerEngine's own server tick
+        // drives Baritone; ticking it here too would double-step pathing.
+        if (!this.getWorld().isClient() && !RemyBrainHost.hasController(this)) {
             this.getBaritone().serverTick();
         }
         super.tick();
+    }
+
+    @Override
+    protected boolean canConvertInWater() {
+        return false;
+    }
+
+    @Override
+    public boolean isDisallowedInPeaceful() {
+        return false;
+    }
+
+    @Override
+    public boolean canImmediatelyDespawn(double distanceSquared) {
+        return false;
     }
 
     @Override

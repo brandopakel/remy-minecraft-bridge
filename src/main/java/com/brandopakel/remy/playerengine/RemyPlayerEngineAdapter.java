@@ -8,6 +8,7 @@ import com.player2.playerengine.automaton.api.utils.input.Input;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityTypeBuilder;
 import net.minecraft.command.CommandRegistryAccess;
@@ -34,12 +35,15 @@ import net.minecraft.util.math.Vec3d;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public final class RemyPlayerEngineAdapter implements ModInitializer {
     public static final String MOD_ID = "remy_playerengine_adapter";
+    public static final String VERSION = "0.2.0";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
     public static final Identifier REMY_ID = id("remy_npc");
     private static final int NO_PROGRESS_LIMIT_TICKS = 80;
@@ -86,7 +90,14 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
         FabricDefaultAttributeRegistry.register(REMY, createRemyAttributes());
         CommandRegistrationCallback.EVENT.register(RemyPlayerEngineAdapter::registerCommands);
         ServerTickEvents.END_SERVER_TICK.register(RemyPlayerEngineAdapter::serverTick);
-        LOGGER.info("Remy PlayerEngine adapter initialized");
+        ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> {
+            MinecraftServer server = sender.getServer();
+            if (server != null) {
+                String text = message.getSignedContent();
+                server.execute(() -> RemyBrainHost.onOwnerChat(server, sender, text));
+            }
+        });
+        LOGGER.info("Remy PlayerEngine adapter initialized (v{})", VERSION);
     }
 
     private static void registerCommands(
@@ -102,6 +113,10 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
                 .then(CommandManager.literal("follow").executes(context -> follow(context.getSource())))
                 .then(CommandManager.literal("stop").executes(context -> stop(context.getSource())))
                 .then(CommandManager.literal("status").executes(context -> status(context.getSource())))
+                .then(CommandManager.literal("commands").executes(context -> listCommands(context.getSource())))
+                .then(CommandManager.literal("do")
+                        .then(CommandManager.argument("command", StringArgumentType.greedyString())
+                                .executes(context -> doCommand(context.getSource(), StringArgumentType.getString(context, "command")))))
                 .then(CommandManager.literal("say")
                         .then(CommandManager.argument("message", StringArgumentType.greedyString())
                                 .executes(context -> say(context.getSource(), StringArgumentType.getString(context, "message"))))));
@@ -142,8 +157,22 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
     }
 
     private static int come(ServerCommandSource source) {
-        ServerPlayerEntity owner = requirePlayer(source);
+        chatCome(requirePlayer(source));
+        return 1;
+    }
+
+    public static void chatCome(ServerPlayerEntity owner) {
         RemyEntity remy = findOrSpawn(owner);
+        if (RemyBrainHost.hasController(remy)) {
+            BlockPos p = owner.getBlockPos();
+            RemyBrainHost.run(remy, owner, "goto " + p.getX() + " " + p.getY() + " " + p.getZ());
+            return;
+        }
+        legacyCome(owner, remy);
+    }
+
+    private static int legacyCome(ServerPlayerEntity owner, RemyEntity remy) {
+        ServerCommandSource source = owner.getCommandSource();
         followActive = false;
         followOwner = null;
         startNavigation("come", owner, remy, owner.getBlockPos());
@@ -152,8 +181,21 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
     }
 
     private static int follow(ServerCommandSource source) {
-        ServerPlayerEntity owner = requirePlayer(source);
+        chatFollow(requirePlayer(source));
+        return 1;
+    }
+
+    public static void chatFollow(ServerPlayerEntity owner) {
         RemyEntity remy = findOrSpawn(owner);
+        if (RemyBrainHost.hasController(remy)) {
+            RemyBrainHost.run(remy, owner, "follow " + owner.getGameProfile().getName());
+            return;
+        }
+        legacyFollow(owner, remy);
+    }
+
+    private static int legacyFollow(ServerPlayerEntity owner, RemyEntity remy) {
+        ServerCommandSource source = owner.getCommandSource();
         followActive = true;
         followOwner = owner.getUuid();
         followRefreshTicks = 0;
@@ -164,9 +206,7 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
 
     private static int stop(ServerCommandSource source) {
         ServerPlayerEntity owner = requirePlayer(source);
-        findOwnedRemy(owner).ifPresent(RemyPlayerEngineAdapter::stopRemy);
-        clearActiveGoal();
-        source.sendFeedback(() -> Text.literal("Remy stopped"), false);
+        chatStop(owner);
         return 1;
     }
 
@@ -188,6 +228,65 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
                 + ", noProgressTicks=" + noProgressTicks
                 + ", clearance=" + standStatus(owner.getServerWorld(), entity.getBlockPos());
         source.sendFeedback(() -> Text.literal(message), false);
+        return 1;
+    }
+
+    public static void chatStop(ServerPlayerEntity owner) {
+        findOwnedRemy(owner).ifPresent(remy -> {
+            RemyBrainHost.stop(remy);
+            stopRemy(remy);
+        });
+        clearActiveGoal();
+        owner.sendMessage(Text.literal("Remy stopped"), false);
+    }
+
+    public static void stopLegacyNavigation(RemyEntity remy) {
+        stopRemy(remy);
+        clearActiveGoal();
+    }
+
+    public static Optional<RemyEntity> findRemyFor(ServerPlayerEntity owner) {
+        return findOwnedRemy(owner);
+    }
+
+    /** Compact plain-text state for the brain: positions, health, held items, nearby mobs. */
+    public static String describeFor(ServerPlayerEntity owner) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("owner at ").append(shortPos(owner.getBlockPos()))
+                .append(" in ").append(owner.getServerWorld().getRegistryKey().getValue());
+        Optional<RemyEntity> remy = findOwnedRemy(owner);
+        if (remy.isEmpty()) {
+            sb.append("; remy not spawned");
+            return sb.toString();
+        }
+        RemyEntity r = remy.get();
+        sb.append("; remy at ").append(shortPos(r.getBlockPos()))
+                .append(" health ").append((int) r.getHealth()).append("/").append((int) r.getMaxHealth())
+                .append(" holding ").append(Registries.ITEM.getId(r.getMainHandStack().getItem()));
+        List<String> hostiles = new ArrayList<>();
+        for (Entity e : owner.getServerWorld().getOtherEntities(r, r.getBoundingBox().expand(16),
+                e -> e instanceof net.minecraft.entity.mob.Monster && !(e instanceof RemyEntity))) {
+            hostiles.add(Registries.ENTITY_TYPE.getId(e.getType()).toString());
+            if (hostiles.size() >= 8) {
+                break;
+            }
+        }
+        sb.append("; hostiles nearby: ").append(hostiles.isEmpty() ? "none" : String.join(", ", hostiles));
+        return sb.toString();
+    }
+
+    private static int listCommands(ServerCommandSource source) {
+        ServerPlayerEntity owner = requirePlayer(source);
+        RemyEntity remy = findOrSpawn(owner);
+        List<String> names = RemyBrainHost.commandNames(remy, owner);
+        source.sendFeedback(() -> Text.literal("Remy can: " + String.join(", ", names)), false);
+        return 1;
+    }
+
+    private static int doCommand(ServerCommandSource source, String command) {
+        ServerPlayerEntity owner = requirePlayer(source);
+        RemyEntity remy = findOrSpawn(owner);
+        RemyBrainHost.run(remy, owner, command);
         return 1;
     }
 

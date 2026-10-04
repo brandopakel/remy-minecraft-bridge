@@ -1,5 +1,6 @@
 package com.brandopakel.remy.playerengine;
 
+import com.player2.playerengine.PlayerEngineController;
 import com.player2.playerengine.automaton.api.entity.IAutomatone;
 import com.player2.playerengine.automaton.api.entity.IHungerManagerProvider;
 import com.player2.playerengine.automaton.api.entity.IInteractionManagerProvider;
@@ -7,24 +8,35 @@ import com.player2.playerengine.automaton.api.entity.IInventoryProvider;
 import com.player2.playerengine.automaton.api.entity.LivingEntityHungerManager;
 import com.player2.playerengine.automaton.api.entity.LivingEntityInteractionManager;
 import com.player2.playerengine.automaton.api.entity.LivingEntityInventory;
+import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.mob.ZombieEntity;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.text.Text;
 import net.minecraft.util.Arm;
+import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Vec3i;
 import net.minecraft.world.GameRules;
 import net.minecraft.world.World;
 
 import java.util.UUID;
 
-public class RemyEntity extends ZombieEntity
+/**
+ * Remy's body. A plain LivingEntity (not a mob): PlayerEngine/Automatone writes
+ * forward/sideways input straight onto the entity and vanilla LivingEntity#travel
+ * moves it. Mob bodies (the 0.1.x zombie base) also run MoveControl/NoAI logic that
+ * zeroes those inputs, which is why the old adapter could path but never walk.
+ * Structure follows the reference companion body in Goodbird-git/Player2NPC.
+ */
+public class RemyEntity extends LivingEntity
         implements IAutomatone, IInventoryProvider, IInteractionManagerProvider, IHungerManagerProvider {
     private static final String OWNER_UUID_KEY = "RemyOwnerUuid";
     private static final String OWNER_NAME_KEY = "RemyOwnerName";
@@ -35,6 +47,7 @@ public class RemyEntity extends ZombieEntity
     private final LivingEntityInteractionManager interactionManager;
     private final LivingEntityInventory inventory;
     private final LivingEntityHungerManager hungerManager;
+    private Vec3d lastVelocity = Vec3d.ZERO;
 
     private UUID ownerUuid;
     private String ownerName = "";
@@ -43,16 +56,10 @@ public class RemyEntity extends ZombieEntity
         super(entityType, world);
         this.setStepHeight(0.6f);
         this.setMovementSpeed(0.4f);
-        // Do NOT disable AI: PlayerEngine drives mob movement through a mixin on
-        // MobEntity#tickNewAi, which vanilla skips for NoAI mobs. With AI disabled
-        // Remy accepted path goals but never moved (verified in-game 2026-10-03).
-        // Vanilla goals are already empty via initGoals(), so nothing else runs.
-        this.setPersistent();
-        this.setCanPickUpLoot(false);
         this.interactionManager = new LivingEntityInteractionManager(this);
         this.inventory = new LivingEntityInventory(this);
         this.hungerManager = new LivingEntityHungerManager();
-        this.setCustomName(Text.literal("remy"));
+        this.setCustomName(Text.literal("Remy"));
         this.setCustomNameVisible(true);
     }
 
@@ -70,11 +77,6 @@ public class RemyEntity extends ZombieEntity
     }
 
     @Override
-    protected void initGoals() {
-        // Navigation is driven by PlayerEngine/Baritone goals, not vanilla mob AI.
-    }
-
-    @Override
     public LivingEntityInventory getLivingInventory() {
         return inventory;
     }
@@ -89,37 +91,38 @@ public class RemyEntity extends ZombieEntity
         return hungerManager;
     }
 
+    public Vec3d lerpVelocity(float delta) {
+        return this.lastVelocity.lerp(this.getVelocity(), delta);
+    }
+
     @Override
     public void tick() {
-        this.setFireTicks(0);
+        this.lastVelocity = this.getVelocity();
         interactionManager.update();
         inventory.updateItems();
-        // When a PlayerEngineController is attached, PlayerEngine's own server tick
-        // drives Baritone; ticking it here too would double-step pathing.
-        if (!this.getWorld().isClient() && !RemyBrainHost.hasController(this)) {
-            this.getBaritone().serverTick();
+        lastAttackedTicks++;
+        // PlayerEngine does not tick controllers globally: the body that owns a
+        // PlayerEngineController must call serverTick() itself (that also ticks
+        // Baritone and applies movement inputs).
+        if (!this.getWorld().isClient()) {
+            PlayerEngineController controller = RemyBrainHost.ensureController(this);
+            if (controller != null) {
+                controller.serverTick();
+            } else {
+                this.getBaritone().serverTick();
+            }
         }
         super.tick();
-    }
-
-    @Override
-    protected boolean canConvertInWater() {
-        return false;
-    }
-
-    @Override
-    public boolean isDisallowedInPeaceful() {
-        return false;
-    }
-
-    @Override
-    public boolean canImmediatelyDespawn(double distanceSquared) {
-        return false;
+        tickHandSwing();
     }
 
     @Override
     public void tickMovement() {
+        if (this.isTouchingWater() && this.isSneaking() && this.shouldSwimInFluids()) {
+            this.knockDownwards();
+        }
         super.tickMovement();
+        this.headYaw = this.getYaw();
         pickupNearbyItems();
     }
 
@@ -130,7 +133,7 @@ public class RemyEntity extends ZombieEntity
         if (!this.getWorld().getGameRules().getBoolean(GameRules.DO_MOB_GRIEFING)) {
             return;
         }
-        Vec3i radius = new Vec3i(2, 2, 2);
+        Vec3i radius = new Vec3i(3, 3, 3);
         for (ItemEntity itemEntity : this.getWorld().getNonSpectatingEntities(
                 ItemEntity.class,
                 this.getBoundingBox().expand(radius.getX(), radius.getY(), radius.getZ())
@@ -146,6 +149,41 @@ public class RemyEntity extends ZombieEntity
                     }
                 }
             }
+        }
+    }
+
+    /** LivingEntity has no melee by default; PlayerEngine's combat tasks call this. */
+    @Override
+    public boolean tryAttack(Entity target) {
+        lastAttackedTicks = 0;
+        float damage = (float) this.getAttributeValue(EntityAttributes.GENERIC_ATTACK_DAMAGE);
+        float knockback = (float) this.getAttributeValue(EntityAttributes.GENERIC_ATTACK_KNOCKBACK);
+        if (target instanceof LivingEntity living) {
+            damage += EnchantmentHelper.getAttackDamage(this.getMainHandStack(), living.getGroup());
+            knockback += (float) EnchantmentHelper.getKnockback(this);
+        }
+        int fire = EnchantmentHelper.getFireAspect(this);
+        if (fire > 0) {
+            target.setOnFireFor(fire * 4);
+        }
+        boolean hit = target.damage(this.getDamageSources().mobAttack(this), damage);
+        if (hit) {
+            if (knockback > 0.0f && target instanceof LivingEntity living) {
+                living.takeKnockback(knockback * 0.5f,
+                        MathHelper.sin(this.getYaw() * ((float) Math.PI / 180f)),
+                        -MathHelper.cos(this.getYaw() * ((float) Math.PI / 180f)));
+                this.setVelocity(this.getVelocity().multiply(0.6, 1.0, 0.6));
+            }
+            this.applyDamageEffects(this, target);
+            this.onAttacking(target);
+        }
+        return hit;
+    }
+
+    @Override
+    public void takeKnockback(double strength, double x, double z) {
+        if (this.velocityModified) {
+            super.takeKnockback(strength, x, z);
         }
     }
 
@@ -189,6 +227,11 @@ public class RemyEntity extends ZombieEntity
     }
 
     @Override
+    public Iterable<ItemStack> getArmorItems() {
+        return inventory.armor;
+    }
+
+    @Override
     public ItemStack getEquippedStack(EquipmentSlot slot) {
         if (slot == EquipmentSlot.MAINHAND) {
             return inventory.getMainHandStack();
@@ -211,20 +254,5 @@ public class RemyEntity extends ZombieEntity
         } else if (slot.getType() == EquipmentSlot.Type.ARMOR) {
             inventory.armor.set(slot.getEntitySlotId(), stack);
         }
-    }
-
-    @Override
-    protected boolean burnsInDaylight() {
-        return false;
-    }
-
-    @Override
-    public boolean isBaby() {
-        return false;
-    }
-
-    @Override
-    public boolean tryAttack(Entity target) {
-        return false;
     }
 }

@@ -46,6 +46,23 @@ public final class RemyBrainHost {
         return PlayerEngineController.staticControllers.containsKey(remy.getUuid());
     }
 
+    /**
+     * Returns Remy's controller, creating it once the owner is online. Returns null while
+     * the owner is offline (Remy then just stands still; PlayerEngine needs an owner for
+     * follow/give and to scope its chat output).
+     */
+    public static PlayerEngineController ensureController(RemyEntity remy) {
+        PlayerEngineController existing = PlayerEngineController.staticControllers.get(remy.getUuid());
+        if (existing != null) {
+            return existing;
+        }
+        if (remy.getOwnerUuid() == null || remy.getServer() == null || remy.age % 20 != 0) {
+            return null;
+        }
+        ServerPlayerEntity owner = remy.getServer().getPlayerManager().getPlayer(remy.getOwnerUuid());
+        return owner == null ? null : controllerFor(remy, owner);
+    }
+
     public static PlayerEngineController controllerFor(RemyEntity remy, ServerPlayerEntity owner) {
         PlayerEngineController existing = PlayerEngineController.staticControllers.get(remy.getUuid());
         if (existing != null) {

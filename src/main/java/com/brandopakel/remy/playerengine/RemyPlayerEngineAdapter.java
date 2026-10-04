@@ -163,12 +163,8 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
 
     public static void chatCome(ServerPlayerEntity owner) {
         RemyEntity remy = findOrSpawn(owner);
-        if (RemyBrainHost.hasController(remy)) {
-            BlockPos p = owner.getBlockPos();
-            RemyBrainHost.run(remy, owner, "goto " + p.getX() + " " + p.getY() + " " + p.getZ());
-            return;
-        }
-        legacyCome(owner, remy);
+        BlockPos p = owner.getBlockPos();
+        RemyBrainHost.run(remy, owner, "goto " + p.getX() + " " + p.getY() + " " + p.getZ());
     }
 
     private static int legacyCome(ServerPlayerEntity owner, RemyEntity remy) {
@@ -187,11 +183,7 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
 
     public static void chatFollow(ServerPlayerEntity owner) {
         RemyEntity remy = findOrSpawn(owner);
-        if (RemyBrainHost.hasController(remy)) {
-            RemyBrainHost.run(remy, owner, "follow " + owner.getGameProfile().getName());
-            return;
-        }
-        legacyFollow(owner, remy);
+        RemyBrainHost.run(remy, owner, "follow " + owner.getGameProfile().getName());
     }
 
     private static int legacyFollow(ServerPlayerEntity owner, RemyEntity remy) {

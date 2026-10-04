@@ -145,7 +145,12 @@ public final class VillageManager {
                 "REMY_GDMC_URL", "http://127.0.0.1:" + cfg.port,
                 "REMY_GDMC_TOKEN", token,
                 "PYTHONIOENCODING", "utf-8",
-                "PYTHONUNBUFFERED", "1");
+                "PYTHONUNBUFFERED", "1",
+                // One BLAS thread: OpenBLAS's per-thread buffers (24 threads on the test PC)
+                // exhausted Windows commit memory while Minecraft was running.
+                "OPENBLAS_NUM_THREADS", "1",
+                "OMP_NUM_THREADS", "1",
+                "MKL_NUM_THREADS", "1");
         running = runLogged(server, owner, cmd, dir, "village", env, null, null);
     }
 

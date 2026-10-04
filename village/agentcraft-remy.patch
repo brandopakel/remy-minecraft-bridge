@@ -158,6 +158,22 @@ index 830dc88..a94abff 100644
 +requests
 +scipy
 +wonderwords
+diff --git a/run.py b/run.py
+index 4aa9b59..f3b4d76 100644
+--- a/run.py
++++ b/run.py
+@@ -6,6 +6,11 @@ __all__ = []
+ __author__ = "aith"
+ __version__ = "1.0"
+ 
++import os
++# Remy: keep numpy/scipy BLAS single-threaded. With Minecraft running, OpenBLAS's
++# per-thread buffers (24 threads on this PC) exhausted Windows commit memory.
++for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
++    os.environ.setdefault(_v, "1")
+ import sys
+ import getopt
+ import src.simulation
 diff --git a/setup.py b/setup.py
 index 5640d58..4ad610e 100644
 --- a/setup.py

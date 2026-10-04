@@ -1,5 +1,21 @@
 # Verified Status
 
+## 2026-10-03 (evening, v0.3.1 → v0.3.2): brain chat, no Player2 prompts, first real village
+
+Verified in-game with `remy-playerengine-adapter-0.3.1`:
+
+- Chat `remy protect me` → rules → `set_follow_mode DEFENDER` + `follow xxBP00`; Remy answered and stayed close.
+- Chat `remy chop 3 oak logs for me` → rules → `get oak_log 3`; Remy felled a tree, picked up the logs, task `SUCCEEDED`.
+- No Player2 authentication/device-flow messages after either chat (0.3.0 had triggered one; the 0.3.1 conversation-queue mute fixed it).
+- `/remyengine village setup` installed agentcraft's Python deps (Python 3.14, numpy 2.5, scipy 1.18, bitarray 3.11) in ~40 s.
+- Chat `remy build a village here` started agentcraft against the live 1.20.1 world through the GDMC bridge: NBT read, site found on attempt 18, main street at (943, 54), settlers Birch/Cora/Eli built a tower, tiny houses, logs, a market stall, hay, carts and lamps.
+
+Problems found:
+
+- First village run died with `OpenBLAS error: Memory allocation still failed`. OpenBLAS starts one thread per core (24 on this PC), each with its own buffers, and Windows was already near its commit limit. Fixed by capping BLAS threads at 1: in `village/agentcraft-remy.patch` (run.py) and in the village process environment (v0.3.2).
+- About 2.5 minutes into the second run, Minecraft itself crashed with a native out-of-memory error: commit charge 11.6 GB with `-Xmx6144m`, and the system page file had 11 MB left (32 GB commit limit = 16 GB RAM + 16 GB page file). This is the same failure as the earlier Homestead crashes. Background apps (Chrome, VMs) are using most of the commit budget. Fix on the PC side: a larger or system-managed page file, or closing heavy apps before playing.
+- A `/tp` to y=135 in survival killed the player (fall damage). Use spectator mode to inspect builds.
+
 ## 2026-10-03: Remy moves, works, and has a brain
 
 Verified in-game on Homestead 1.3.7 (profile `Homestead - Remy Carpet Test`, world `New World - Remy LAN Test`):

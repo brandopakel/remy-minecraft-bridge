@@ -139,6 +139,18 @@ public final class RemyBrainHost {
                 RemyPlayerEngineAdapter.chatCome(owner);
                 return true;
             }
+            case "undo", "undo that", "take it back" -> {
+                com.brandopakel.remy.playerengine.architect.ArchitectFlow.undo(owner);
+                return true;
+            }
+            case "preview", "show me", "show me it", "preview it" -> {
+                com.brandopakel.remy.playerengine.architect.ArchitectFlow.preview(owner);
+                return true;
+            }
+            case "build it", "go ahead", "build it for real", "do it", "start building" -> {
+                com.brandopakel.remy.playerengine.architect.ArchitectFlow.buildForReal(owner);
+                return true;
+            }
             default -> {
             }
         }
@@ -179,6 +191,7 @@ public final class RemyBrainHost {
                 case "follow" -> RemyPlayerEngineAdapter.chatFollow(owner);
                 case "come" -> RemyPlayerEngineAdapter.chatCome(owner);
                 case "village" -> com.brandopakel.remy.playerengine.village.VillageManager.start(owner.getServer(), owner, 0);
+                case "design" -> com.brandopakel.remy.playerengine.architect.ArchitectFlow.design(owner, plan.commands().isEmpty() ? "a small cozy house" : plan.commands().get(0));
                 default -> {
                 }
             }

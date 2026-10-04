@@ -43,7 +43,7 @@ import java.util.UUID;
 
 public final class RemyPlayerEngineAdapter implements ModInitializer {
     public static final String MOD_ID = "remy_playerengine_adapter";
-    public static final String VERSION = "0.3.2";
+    public static final String VERSION = "0.4.0";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
     public static final Identifier REMY_ID = id("remy_npc");
     private static final int NO_PROGRESS_LIMIT_TICKS = 80;
@@ -90,6 +90,7 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
         FabricDefaultAttributeRegistry.register(REMY, createRemyAttributes());
         CommandRegistrationCallback.EVENT.register(RemyPlayerEngineAdapter::registerCommands);
         ServerTickEvents.END_SERVER_TICK.register(RemyPlayerEngineAdapter::serverTick);
+        ServerTickEvents.END_SERVER_TICK.register(com.brandopakel.remy.playerengine.architect.BuildManager::tick);
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(
                 server -> com.brandopakel.remy.playerengine.village.VillageManager.onServerStopping());
         ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> {
@@ -100,6 +101,7 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
             }
         });
         LOGGER.info("Remy PlayerEngine adapter initialized (v{})", VERSION);
+        com.brandopakel.remy.playerengine.brain.BrainSetup.startIfRequested();
     }
 
     private static void registerCommands(
@@ -119,7 +121,25 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
                 .then(CommandManager.literal("ask")
                         .then(CommandManager.argument("message", StringArgumentType.greedyString())
                                 .executes(context -> ask(context.getSource(), StringArgumentType.getString(context, "message")))))
-                .then(CommandManager.literal("brain").executes(context -> brainStatus(context.getSource())))
+                .then(CommandManager.literal("brain").executes(context -> brainStatus(context.getSource()))
+                        .then(CommandManager.literal("setup").executes(context -> {
+                            ServerPlayerEntity owner = requirePlayer(context.getSource());
+                            com.brandopakel.remy.playerengine.brain.BrainSetup.start(owner.getServer(), owner);
+                            return 1;
+                        })))
+                .then(CommandManager.literal("catalog")
+                        .executes(context -> { com.brandopakel.remy.playerengine.architect.ArchitectFlow.catalog(requirePlayer(context.getSource()), false); return 1; })
+                        .then(CommandManager.literal("rebuild").executes(context -> { com.brandopakel.remy.playerengine.architect.ArchitectFlow.catalog(requirePlayer(context.getSource()), true); return 1; })))
+                .then(CommandManager.literal("design")
+                        .then(CommandManager.argument("request", StringArgumentType.greedyString())
+                                .executes(context -> { com.brandopakel.remy.playerengine.architect.ArchitectFlow.design(requirePlayer(context.getSource()), StringArgumentType.getString(context, "request")); return 1; })))
+                .then(CommandManager.literal("blueprint")
+                        .then(CommandManager.argument("name", StringArgumentType.greedyString())
+                                .executes(context -> { com.brandopakel.remy.playerengine.architect.ArchitectFlow.loadBlueprint(requirePlayer(context.getSource()), StringArgumentType.getString(context, "name")); return 1; })))
+                .then(CommandManager.literal("build")
+                        .then(CommandManager.literal("preview").executes(context -> { com.brandopakel.remy.playerengine.architect.ArchitectFlow.preview(requirePlayer(context.getSource())); return 1; }))
+                        .then(CommandManager.literal("survival").executes(context -> { com.brandopakel.remy.playerengine.architect.ArchitectFlow.buildForReal(requirePlayer(context.getSource())); return 1; }))
+                        .then(CommandManager.literal("undo").executes(context -> { com.brandopakel.remy.playerengine.architect.ArchitectFlow.undo(requirePlayer(context.getSource())); return 1; })))
                 .then(CommandManager.literal("village")
                         .executes(context -> village(context.getSource(), 0))
                         .then(CommandManager.literal("stop").executes(context -> {

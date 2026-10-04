@@ -364,7 +364,9 @@ public final class RemyBrain {
                     control = "village";
                     say = "A whole village? Let's do it.";
                 } else {
-                    say = "I can't build single houses from a description yet. Try \"remy build a village here\".";
+                    control = "design";
+                    cmds.add(message.trim());
+                    say = "Ooh, let me design that.";
                 }
             }
             default -> { say = "Hey! Tell me to follow, guard you, fight, farm, mine, or get something."; }

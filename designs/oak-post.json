@@ -1,0 +1,32 @@
+{
+ "name": "Oak Lookout Post",
+ "summary": "A tiny survival test: oak plank platform, two-log post and an oak slab canopy.",
+ "palette": {
+  "P": "minecraft:oak_planks",
+  "L": "minecraft:oak_log[axis=y]",
+  "S": "minecraft:oak_slab[type=bottom]",
+  ".": "minecraft:air"
+ },
+ "layers": [
+  [
+   "PPP",
+   "PPP",
+   "PPP"
+  ],
+  [
+   "...",
+   ".L.",
+   "..."
+  ],
+  [
+   "...",
+   ".L.",
+   "..."
+  ],
+  [
+   "SSS",
+   "SSS",
+   "SSS"
+  ]
+ ]
+}

@@ -44,6 +44,9 @@ public final class RemyBrainHost {
     public static PlayerEngineController ensureController(RemyEntity remy) {
         PlayerEngineController existing = PlayerEngineController.staticControllers.get(remy.getUuid());
         if (existing != null) {
+            if (remy.age % 100 == 0) {
+                mutePlayerEngineChatAi(existing);
+            }
             return existing;
         }
         if (remy.getOwnerUuid() == null || remy.getServer() == null || remy.age % 20 != 0) {
@@ -61,8 +64,24 @@ public final class RemyBrainHost {
         // Stop the adapter's own lightweight navigation so the two don't fight.
         RemyPlayerEngineAdapter.stopLegacyNavigation(remy);
         PlayerEngineController controller = new PlayerEngineController(remy.getBaritone(), REMY_CHARACTER, "remy-local", owner);
-        RemyPlayerEngineAdapter.LOGGER.info("Attached PlayerEngine controller to Remy {}", remy.getUuid());
+        mutePlayerEngineChatAi(controller);
+        RemyPlayerEngineAdapter.LOGGER.info("Attached PlayerEngine controller to Remy {} (Player2 chat AI muted)", remy.getUuid());
         return controller;
+    }
+
+    /**
+     * PlayerEngine's ConversationManager forwards every owner chat line to its own Player2 LLM,
+     * which starts a Player2 sign-in (device flow) and network calls. Remy has its own brain, so
+     * we disable only that conversation queue; the task runner and commands keep working.
+     * (setChatClefEnabled(false) would also stop the task runner, so it is not used.)
+     */
+    static void mutePlayerEngineChatAi(PlayerEngineController controller) {
+        try {
+            com.player2.playerengine.player2api.manager.ConversationManager
+                    .getOrCreateEventQueueData(controller).setEnabled(false);
+        } catch (RuntimeException e) {
+            RemyPlayerEngineAdapter.LOGGER.warn("Could not mute PlayerEngine chat AI: {}", e.toString());
+        }
     }
 
     public static void stop(RemyEntity remy) {

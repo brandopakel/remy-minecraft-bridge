@@ -1,5 +1,12 @@
 # Verified Status
 
+## 2026-10-03 (late, v0.3.4 → v0.4.0): local brain installed, architect written
+
+- `/remyengine brain setup` (triggered at startup through `config/remy/setup-brain.request`) downloaded `OllamaSetup.exe` from ollama.com (1.58 GB), installed it silently per-user (exit 0), found Ollama 0.35.1 running, pulled `tev1:0.8b` (774 MB), and got an HTTP 200 decision from `/v1/systemone`.
+- Accuracy note: for "chop some birch for me" the 0.8b model picked `follow` (0.52) over `gather` (0.45), but the right target (`minecraft:birch_log`). Clear phrasing is handled by the rules first; the 4b model would be more accurate but needs about 4.5 GB more memory.
+- Texture colours checked offline against the real 1.20.1 client jar: oak planks #a2824e, spruce log #3a2510, stone bricks #7a797a, mossy cobblestone #6e765e, cherry planks #e2b2ac.
+- Architect (catalog, blueprint, design call, instant/survival build) compiles and is installed as v0.4.0, but is **not verified in-game yet**: Homestead crashed on world load twice more with Windows commit memory exhausted (Minecraft ~10.5-11.4 GB, ~21 GB used by other programs, 32 GB limit). Needs a larger page file.
+
 ## 2026-10-03 (evening, v0.3.1 → v0.3.2): brain chat, no Player2 prompts, first real village
 
 Verified in-game with `remy-playerengine-adapter-0.3.1`:

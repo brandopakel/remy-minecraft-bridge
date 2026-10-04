@@ -20,6 +20,7 @@ Remy is an AI companion that lives inside modded Minecraft with you: follows you
 
 - **Mod** (`src/main/java`): `remy-playerengine-adapter`, a Fabric mod built on [PlayerEngine](https://www.curseforge.com/minecraft/mc-mods/playerengine) (Fabric/Forge 1.20.1, Fabric/NeoForge 1.21.1). PlayerEngine's own Player2 LLM/sign-in path is never used; Remy calls its deterministic task commands directly.
 - **Brain** (`brain/RemyBrain.java`): rules first, then an optional decision model. Items, blocks and mobs come from the live modpack registry, so modded content works (`remy get create:andesite_alloy 4`).
+- **Architect** (`architect/`): for "build me a ..." requests. Remy catalogs every placeable block in the pack (colours read from the mod textures, material, shape, craftability), sends your request plus a shortlist of fitting blocks to a strong chat model (OpenRouter, configurable in `config/remy/architect.json`), validates the returned blueprint against the registry, and builds it: instantly as an undo-able preview, or in survival by gathering materials and placing every block.
 - **Village builder** (`village/`): [agentcraft](https://github.com/bytewife/agentcraft) (GDMC 2021, 2nd place) patched for 1.20, driven through a localhost-only, token-protected GDMC endpoint inside the mod.
 
 ## Talking to Remy
@@ -33,9 +34,14 @@ Remy is an AI companion that lives inside modded Minecraft with you: follows you
 | `remy mine some iron` | Mines ore and collects drops |
 | `remy set up a farm` / `remy harvest` | Builds a 9x9 farm / harvests it |
 | `remy give me 5 bread` | Hands you items from Remy's inventory |
+| `remy build me a stone watchtower with a copper roof` | Designs it with the architect model, then waits |
+| `remy preview` / `remy undo` | Places the design instantly in front of you / takes it back |
+| `remy build it` | Gathers the materials and builds the design in survival |
 | `remy build a village here` | Runs agentcraft around you (see `village/README.md`) |
 
-Direct commands: `/remyengine spawn | come | follow | stop | status | commands | do <task> | ask <text> | brain | village [radius|stop|setup]`.
+Direct commands: `/remyengine spawn | come | follow | stop | status | commands | do <task> | ask <text> | brain [setup] | catalog [rebuild] | design <text> | blueprint <name> | build preview|survival|undo | village [radius|stop|setup]`.
+
+`/remyengine brain setup` installs the free local brain on Windows (Ollama from ollama.com, per-user, plus the tev1 model). It also runs at startup if `config/remy/setup-brain.request` exists.
 
 ## Docs
 

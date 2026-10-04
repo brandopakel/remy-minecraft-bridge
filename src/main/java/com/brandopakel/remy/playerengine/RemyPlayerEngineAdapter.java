@@ -43,7 +43,7 @@ import java.util.UUID;
 
 public final class RemyPlayerEngineAdapter implements ModInitializer {
     public static final String MOD_ID = "remy_playerengine_adapter";
-    public static final String VERSION = "0.2.0";
+    public static final String VERSION = "0.3.0";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
     public static final Identifier REMY_ID = id("remy_npc");
     private static final int NO_PROGRESS_LIMIT_TICKS = 80;
@@ -90,6 +90,8 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
         FabricDefaultAttributeRegistry.register(REMY, createRemyAttributes());
         CommandRegistrationCallback.EVENT.register(RemyPlayerEngineAdapter::registerCommands);
         ServerTickEvents.END_SERVER_TICK.register(RemyPlayerEngineAdapter::serverTick);
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(
+                server -> com.brandopakel.remy.playerengine.village.VillageManager.onServerStopping());
         ServerMessageEvents.CHAT_MESSAGE.register((message, sender, params) -> {
             MinecraftServer server = sender.getServer();
             if (server != null) {
@@ -114,6 +116,24 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
                 .then(CommandManager.literal("stop").executes(context -> stop(context.getSource())))
                 .then(CommandManager.literal("status").executes(context -> status(context.getSource())))
                 .then(CommandManager.literal("commands").executes(context -> listCommands(context.getSource())))
+                .then(CommandManager.literal("ask")
+                        .then(CommandManager.argument("message", StringArgumentType.greedyString())
+                                .executes(context -> ask(context.getSource(), StringArgumentType.getString(context, "message")))))
+                .then(CommandManager.literal("brain").executes(context -> brainStatus(context.getSource())))
+                .then(CommandManager.literal("village")
+                        .executes(context -> village(context.getSource(), 0))
+                        .then(CommandManager.literal("stop").executes(context -> {
+                            com.brandopakel.remy.playerengine.village.VillageManager.stop(requirePlayer(context.getSource()));
+                            return 1;
+                        }))
+                        .then(CommandManager.literal("setup").executes(context -> {
+                            ServerPlayerEntity p = requirePlayer(context.getSource());
+                            com.brandopakel.remy.playerengine.village.VillageManager.setup(p.getServer(), p);
+                            return 1;
+                        }))
+                        .then(CommandManager.argument("radius", com.mojang.brigadier.arguments.IntegerArgumentType.integer(24, 100))
+                                .executes(context -> village(context.getSource(),
+                                        com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "radius")))))
                 .then(CommandManager.literal("do")
                         .then(CommandManager.argument("command", StringArgumentType.greedyString())
                                 .executes(context -> doCommand(context.getSource(), StringArgumentType.getString(context, "command")))))
@@ -272,6 +292,36 @@ public final class RemyPlayerEngineAdapter implements ModInitializer {
         RemyEntity remy = findOrSpawn(owner);
         List<String> names = RemyBrainHost.commandNames(remy, owner);
         source.sendFeedback(() -> Text.literal("Remy can: " + String.join(", ", names)), false);
+        return 1;
+    }
+
+    private static int ask(ServerCommandSource source, String message) {
+        ServerPlayerEntity owner = requirePlayer(source);
+        RemyBrainHost.onOwnerChat(owner.getServer(), owner, "remy " + message);
+        return 1;
+    }
+
+    private static int village(ServerCommandSource source, int radius) {
+        ServerPlayerEntity owner = requirePlayer(source);
+        com.brandopakel.remy.playerengine.village.VillageManager.start(owner.getServer(), owner, radius);
+        return 1;
+    }
+
+    private static int brainStatus(ServerCommandSource source) {
+        com.brandopakel.remy.playerengine.brain.RemyBrain.reloadConfig();
+        var cfg = com.brandopakel.remy.playerengine.brain.RemyBrain.config();
+        StringBuilder sb = new StringBuilder("Remy brain (config/remy/brain.json reloaded): useModel=" + cfg.useModel);
+        for (var p : cfg.providers) {
+            boolean keyOk = p.apiKeyEnv == null || p.apiKeyEnv.isBlank()
+                    || (p.apiKey != null && !p.apiKey.isBlank())
+                    || (System.getenv(p.apiKeyEnv) != null && !System.getenv(p.apiKeyEnv).isBlank());
+            sb.append("\n - ").append(p.name).append(" ").append(p.model)
+                    .append(p.enabled ? "" : " (disabled)")
+                    .append(keyOk ? "" : " (no API key: set " + p.apiKeyEnv + " or apiKey)");
+        }
+        sb.append("\nRules always work without a model.");
+        String msg = sb.toString();
+        source.sendFeedback(() -> Text.literal(msg), false);
         return 1;
     }
 

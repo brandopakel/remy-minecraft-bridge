@@ -1,5 +1,28 @@
 # Verified Status
 
+## 2026-10-03: Remy moves, works, and has a brain
+
+Verified in-game on Homestead 1.3.7 (profile `Homestead - Remy Carpet Test`, world `New World - Remy LAN Test`):
+
+- `/remyengine come`: Remy walked ~11 blocks to the owner in 7 s (PlayerEngine `GetToBlock` task finished).
+- Chat `remy follow`: Remy followed the owner downhill.
+- `/remyengine do get oak_log 4`: Remy broke an oak tree, picked up the drops, task `get:oak_logx4 SUCCEEDED`.
+- PlayerEngine started with Player2 AI/sign-in disabled; no device-flow prompt, no Player2 network calls observed.
+
+Root causes of the 0.1.x "pathing=true but never moves" bug:
+
+1. PlayerEngine doesn't tick controllers globally. The body must call `PlayerEngineController#serverTick()` itself, which is where Baritone inputs get applied. The 0.1.x adapter had no controller, so it computed paths but never applied inputs.
+2. The zombie (MobEntity) body ran vanilla NoAI/MoveControl logic that zeroes movement input. Remy is now a plain `LivingEntity` (same structure as the reference body in Goodbird-git/Player2NPC) with melee support and a player-model renderer.
+
+Added and checked off-game (`scripts/run-checks.sh`, all passing):
+
+- `RemyBrain`: rules → optional Jev/tev1 decision → PlayerEngine command lines; registry-based item/mob/block matching including modded ids.
+- `GdmcBridge` + `VillageManager`: GDMC-HTTP 0.4.x endpoint for agentcraft; 1.16 chunk encoding round-trips through agentcraft's own decoder; patched agentcraft ran end-to-end against `village/mock_gdmc.py`.
+
+Not yet verified in-game: chat brain intents beyond follow/come/stop, Jev/tev1 calls (no key or Ollama installed yet), village generation in the real world.
+
+Incidents: the first launch crashed with Windows out of commit memory (7 historical Homestead crashes show the same), and was fixed by closing Chrome. During testing, a creeper killed the player while the pause menu wasn't responding to key input.
+
 ## Local Findings
 
 - Homestead is Minecraft `1.20.1` on Fabric.

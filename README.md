@@ -1,53 +1,50 @@
 # remy-minecraft-bridge
 
-This repository tracks local experiments for bringing `remy` into a Homestead Minecraft world as a separate teammate.
+Remy is an AI companion that lives inside modded Minecraft with you: follows you, fights with you, gathers, mines, farms, and can grow a whole village. Built and tested on **Homestead 1.3.7 (Fabric, Minecraft 1.20.1)**; designed to carry over to other packs.
 
-## Current Track: PlayerEngine Adapter
+## How it works
 
-The active track is a small self-authored Fabric mod, `remy-playerengine-adapter`, installed only in the duplicated Remy Homestead profile. It reuses the official PlayerEngine Fabric `1.20.1-1.4.0` lower-level navigation APIs instead of continuing custom Scarpet movement/pathfinding.
+```
+ you, in chat ──► "remy chop 8 wood"
+                     │
+          ┌──────────▼───────────┐   free, instant: plain-code rules
+          │  Remy brain (in mod) │──► unsure? one call to a decision model:
+          └──────────┬───────────┘      Jev (hosted, OpenRouter) or tev1 (local, Ollama)
+                     │ "get oak_log 8"   — the model can only pick from our options
+          ┌──────────▼───────────┐
+          │ PlayerEngine hands   │   pathing, combat, mining, crafting, farming
+          └──────────┬───────────┘   (no model while Remy works)
+                     ▼
+               Remy's body (player-model NPC in your world)
+```
 
-Current adapter commands:
+- **Mod** (`src/main/java`): `remy-playerengine-adapter`, a Fabric mod built on [PlayerEngine](https://www.curseforge.com/minecraft/mc-mods/playerengine) (Fabric/Forge 1.20.1, Fabric/NeoForge 1.21.1). PlayerEngine's own Player2 LLM/sign-in path is never used; Remy calls its deterministic task commands directly.
+- **Brain** (`brain/RemyBrain.java`): rules first, then an optional decision model. Items, blocks and mobs come from the live modpack registry, so modded content works (`remy get create:andesite_alloy 4`).
+- **Village builder** (`village/`): [agentcraft](https://github.com/bytewife/agentcraft) (GDMC 2021, 2nd place) patched for 1.20, driven through a localhost-only, token-protected GDMC endpoint inside the mod.
 
-- `/remyengine spawn`
-- `/remyengine status`
-- `/remyengine come`
-- `/remyengine follow`
-- `/remyengine stop`
-- `/remyengine say <message>`
+## Talking to Remy
 
-Verified so far:
+| In chat | What Remy does |
+|---|---|
+| `remy follow` / `remy come` / `remy stop` | Handled in code, never by a model |
+| `remy protect me` | Defender follow mode: fights hostiles near you |
+| `remy kill all the monsters` | Clears hostiles nearby |
+| `remy chop 16 wood`, `remy get 4 torches` | Gathers or crafts the item |
+| `remy mine some iron` | Mines ore and collects drops |
+| `remy set up a farm` / `remy harvest` | Builds a 9x9 farm / harvests it |
+| `remy give me 5 bread` | Hands you items from Remy's inventory |
+| `remy build a village here` | Runs agentcraft around you (see `village/README.md`) |
 
-- Official PlayerEngine jar was downloaded, hashed, and staged in the duplicate profile only.
-- The adapter builds and loads with Homestead.
-- The hardened PlayerEngine config disables call-by-name chat, owner-offline continuation, ModIntelligence startup inspection/enrichment, RAG/live memory helpers, deep-check helpers, and TTS ack.
-- After restart, logs showed `payerMode=OWNER_PAYS_ALL`, `dedicated=false`, `ownerOfflineContinue=false`, `callByNameChat=false`, `ModIntelligence: disabled by config`, and no fresh Player2 device-flow prompt in the observed startup window.
+Direct commands: `/remyengine spawn | come | follow | stop | status | commands | do <task> | ask <text> | brain | village [radius|stop|setup]`.
 
-Not proven yet:
+## Docs
 
-- Runtime spawn/come/follow/stop behavior.
-- Long-run guarantee that no PlayerEngine AI/auth/network feature can be triggered by unrelated commands. The adapter avoids PlayerEngine controller/API/auth/LLM/TTS classes, but the upstream jar still registers its broader systems. Do not use `/playerengine`, Player2 sign-in, voice AI, or natural-language PlayerEngine features for this track.
-- Complex building or full autonomy.
+- `docs/setup.md`: install, brain providers (Jev / tev1), village builder.
+- `docs/status.md`: what's verified in-game, with dates.
+- `docs/architecture.md`: design and safety notes.
+- `village/README.md`: agentcraft bridge details.
 
-## Legacy Track: Carpet/Scarpet Bridge
+## Boundaries
 
-The previous track used official Carpet plus a world-local Scarpet app and a local Node controller. It remains useful as recovery/history, but it is not the active movement path.
-
-Legacy capabilities that were proven in the copied world:
-
-- Spawn a Carpet fake player named `remy`.
-- Read position, gamemode, inventory, and bounded surroundings.
-- Look, briefly move, and stop with command acknowledgments.
-
-Legacy limitations:
-
-- Custom follow/pathfinding hit Scarpet runtime type issues and was paused.
-- It should not be used for new movement tests unless deliberately revived.
-
-## Project Boundaries
-
-- Preserve the original Homestead profile/worlds.
-- Treat the current Remy world as valuable user progress and back it up before risky changes.
-- Do not publish Minecraft saves, player data, logs, third-party jars, credentials, or local machine paths.
-- Keep Git pushes milestone-based: useful tested states, not every small scratch change.
-
-See `docs/setup.md`, `docs/playerengine-adapter.md`, `docs/status.md`, and `docs/architecture.md` for the current test flow and safety notes.
+- Third-party jars, Minecraft saves, logs and API keys stay out of this repo.
+- The village builder's local endpoint exists only while a village is being generated, is bound to 127.0.0.1, needs a per-run token, and refuses browser requests.

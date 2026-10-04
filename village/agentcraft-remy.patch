@@ -1,0 +1,209 @@
+diff --git a/http_framework/bitarray.py b/http_framework/bitarray.py
+index 56c3bdb..6d92970 100644
+--- a/http_framework/bitarray.py
++++ b/http_framework/bitarray.py
+@@ -38,6 +38,7 @@ class BitArray:
+         return int(index / self.entriesPerLong)
+ 
+     def getAt(self, index):
++        index = int(index)
+         inclusiveBetween(0, (self.arraySize - 1), index)
+         i = self.getPosOfLong(index)
+         # print("{} > {}".format(index, i))
+diff --git a/http_framework/interfaceUtils.py b/http_framework/interfaceUtils.py
+index e9f3bdc..169474c 100644
+--- a/http_framework/interfaceUtils.py
++++ b/http_framework/interfaceUtils.py
+@@ -15,6 +15,12 @@ from collections import OrderedDict
+ 
+ import numpy as np
+ import requests
++import os as _os
++# Remy bridge: the GDMC-compatible endpoint lives inside the Remy mod (localhost only,
++# token-protected). Defaults keep the original GDMC-HTTP 0.4.x behaviour.
++GDMC_URL = _os.environ.get("REMY_GDMC_URL", "http://localhost:9000").rstrip("/")
++_TOKEN = _os.environ.get("REMY_GDMC_TOKEN", "")
++_HEADERS = {"X-Remy-Token": _TOKEN} if _TOKEN else {}
+ from requests.exceptions import ConnectionError
+ from http_framework.worldLoader import WorldSlice
+ 
+@@ -72,7 +78,7 @@ class Interface():
+         """**Return the name of a block in the world**."""
+         x, y, z = self.local2global(x, y, z)
+ 
+-        url = 'http://localhost:9000/blocks?x={}&y={}&z={}'.format(x, y, z)
++        url = GDMC_URL + '/blocks?x={}&y={}&z={}'.format(x, y, z)
+         if self.caching and (x, y, z) in self.cache:
+             return self.cache[(x, y, z)]
+ 
+@@ -83,7 +89,7 @@ class Interface():
+                 return block
+ 
+         try:
+-            response = requests.get(url)
++            response = requests.get(url, headers=_HEADERS)
+             if self.caching:
+                 self.cache[(x, y, z)] = response.text
+         except ConnectionError:
+@@ -118,9 +124,9 @@ class Interface():
+         """**Place a single block in the world**."""
+         x, y, z = self.local2global(x, y, z)
+ 
+-        url = 'http://localhost:9000/blocks?x={}&y={}&z={}'.format(x, y, z)
++        url = GDMC_URL + '/blocks?x={}&y={}&z={}'.format(x, y, z)
+         try:
+-            response = requests.put(url, blockStr)
++            response = requests.put(url, blockStr, headers=_HEADERS)
+         except ConnectionError:
+             return "0"
+         return response.text
+@@ -169,11 +175,11 @@ class Interface():
+         Since the buffer contains global coordinates
+             no conversion takes place in this function
+         """
+-        url = 'http://localhost:9000/blocks?x={}&y={}&z={}'.format(x, y, z)
++        url = GDMC_URL + '/blocks?x={}&y={}&z={}'.format(x, y, z)
+         body = str.join("\n", ['~{} ~{} ~{} {}'.format(*bp)
+                                for bp in self.buffer])
+         try:
+-            response = requests.put(url, body)
++            response = requests.put(url, body, headers=_HEADERS)
+             self.buffer = []
+             return response.text
+         except ConnectionError as e:
+@@ -208,9 +214,9 @@ class Interface():
+ 
+ def runCommand(command):
+     """**Run a Minecraft command in the world**."""
+-    url = 'http://localhost:9000/command'
++    url = GDMC_URL + '/command'
+     try:
+-        response = requests.post(url, bytes(command, "utf-8"))
++        response = requests.post(url, bytes(command, "utf-8"), headers=_HEADERS)
+     except ConnectionError:
+         return "connection error"
+     return response.text
+@@ -219,7 +225,7 @@ def runCommand(command):
+ def requestBuildArea():
+     """**Return the building area**."""
+     area = 0, 0, 0, 128, 256, 128   # default area for beginners
+-    response = requests.get('http://localhost:9000/buildarea')
++    response = requests.get(GDMC_URL + '/buildarea', headers=_HEADERS)
+     if response.ok:
+         buildArea = response.json()
+         if buildArea != -1:
+diff --git a/http_framework/worldLoader.py b/http_framework/worldLoader.py
+index 018a612..8c21972 100644
+--- a/http_framework/worldLoader.py
++++ b/http_framework/worldLoader.py
+@@ -19,9 +19,10 @@ from http_framework.bitarray import BitArray
+ 
+ def get_chunks(x, z, dx, dz, rtype='text'):
+     """**Get raw chunk data**."""
+-    url = f'http://localhost:9000/chunks?x={x}&z={z}&dx={dx}&dz={dz}'
++    from http_framework.interfaceUtils import GDMC_URL, _HEADERS
++    url = f'{GDMC_URL}/chunks?x={x}&z={z}&dx={dx}&dz={dz}'
+     accept_type = 'application/octet-stream' if rtype == 'bytes' else 'text/raw'
+-    response = requests.get(url, headers={"Accept": accept_type})
++    response = requests.get(url, headers={"Accept": accept_type, **_HEADERS})
+     if response.status_code >= 400:
+         print(f"error: {response.text}")
+     if rtype == 'text':
+@@ -71,7 +72,7 @@ class WorldSlice:
+         self.heightmaps = {}
+         for hmName in self.heightmapTypes:
+             self.heightmaps[hmName] = np.zeros(
+-                (self.rect[2], self.rect[3]), dtype=np.int)
++                (self.rect[2], self.rect[3]), dtype=int)
+ 
+         # Sections are in x,z,y order!!! (reverse minecraft order :p)
+         self.sections = [[[None for i in range(16)] for z in range(
+@@ -121,6 +122,7 @@ class WorldSlice:
+ 
+     def getBlockCompoundAt(self, x, y, z):
+         """**Return block data**."""
++        x, y, z = int(x), int(y), int(z)  # NumPy 2: avoid uint8 overflow in index math
+         chunkX = (x >> 4) - self.chunkRect[0]
+         chunkZ = (z >> 4) - self.chunkRect[1]
+         chunkY = y >> 4
+diff --git a/names.py b/names.py
+new file mode 100644
+index 0000000..457fd7a
+--- /dev/null
++++ b/names.py
+@@ -0,0 +1,10 @@
++"""Minimal stand-in for the unmaintained `names` package (it no longer builds on Python 3.12+)."""
++import random
++
++_FIRST = ["Ada", "Alder", "Ash", "Bea", "Birch", "Bram", "Cora", "Dale", "Eli", "Elm", "Fern", "Finn", "Gale",
++          "Hazel", "Ivy", "Jun", "Kit", "Lark", "Lin", "Maple", "Mira", "Moss", "Nell", "Oak", "Odo", "Pip",
++          "Quill", "Reed", "Rowan", "Sage", "Tam", "Tess", "Uma", "Vale", "Wren", "Yara", "Zed"]
++
++
++def get_first_name(gender=None):
++    return random.choice(_FIRST)
+diff --git a/requirements.txt b/requirements.txt
+index 830dc88..a94abff 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,5 +1,6 @@
+-requests>=2.21.0
+-numpy>=1.19.2
+-NBT>=1.5.0
+-opencv_python>=4.4.0.44
+-matplotlib>=3.3.2
++bitarray
++numpy
++nbt
++requests
++scipy
++wonderwords
+diff --git a/setup.py b/setup.py
+index 5640d58..4ad610e 100644
+--- a/setup.py
++++ b/setup.py
+@@ -7,5 +7,5 @@ if __name__ == '__main__':
+         license='MIT',
+         url="https://github.com/aith/agentcraft",
+         python_requires=">=3.9",
+-        install_requires=["bitarray", "numpy", "names", "nbt", "requests", "scipy", "wonderwords"],
++        install_requires=["bitarray", "numpy", "nbt", "requests", "scipy", "wonderwords"],
+     )
+diff --git a/src/pathfinding.py b/src/pathfinding.py
+index 8315220..5909dee 100644
+--- a/src/pathfinding.py
++++ b/src/pathfinding.py
+@@ -15,7 +15,7 @@ import numpy as np
+ from numpy import full_like
+ from scipy.spatial import KDTree
+ 
+-from bitarray.util import count_xor, rindex
++from bitarray.util import count_xor
+ 
+ import src.utils
+ 
+diff --git a/src/states.py b/src/states.py
+index aee9c4e..2752bf2 100644
+--- a/src/states.py
++++ b/src/states.py
+@@ -164,6 +164,7 @@ class State:
+ 
+     def blocks(self, x, y, z):
+         """ Return lazily loaded block at given position """
++        x, y, z = int(x), int(y), int(z)  # NumPy 2 safe
+         if self.blocks_arr[x][y][z] == 0:
+             self.blocks_arr[x][y][z] = self.world_slice.getBlockAt(self.world_x + x, self.world_y + y, self.world_z + z)
+         return self.blocks_arr[x][y][z]
+diff --git a/src/utils.py b/src/utils.py
+index cec9505..be60974 100644
+--- a/src/utils.py
++++ b/src/utils.py
+@@ -685,7 +685,7 @@ def get_heightmap(world_slice, heightmap_type="MOTION_BLOCKING_NO_LEAVES", y_off
+         for x in range(len(heightmap)):
+             for z in range(len(heightmap[x])):
+                 heightmap[x][z] += y_offset
+-    return np.array(heightmap, dtype=np.uint8)
++    return np.array(heightmap, dtype=np.int32)
+ 
+ def clamp(x, a, b):
+     return max(min(x, b), a)

@@ -1,109 +1,60 @@
 # Setup
 
-## Active PlayerEngine Track
+## 1. Mods
 
-Use the duplicate Remy Homestead profile only. Do not install this track into the original Homestead profile.
+Into the modpack's `mods/` folder (one test profile: `Homestead - Remy Carpet Test`):
 
-Prerequisites:
+- PlayerEngine for your loader/version, e.g. `playerengine-fabric-1.20.1-1.4.0.jar` (CurseForge project 1322604). Needs Architectury and Fabric API (Homestead already has both).
+- `remy-playerengine-adapter-<version>.jar` from `build/libs/`.
 
-- Homestead pack version `1.3.7`.
-- Minecraft `1.20.1`.
-- Java 17 with enough memory for Homestead. The pack docs recommend 6-8 GB allocated.
-- Fabric loader compatible with the duplicated Homestead instance.
-- Official PlayerEngine Fabric `1.20.1-1.4.0`.
-- Architectury `9.2.14` and Fabric API already present in the Homestead duplicate profile.
-- Self-authored `remy-playerengine-adapter-0.1.0.jar`.
+Copy `config/playerengine/server_player2.json` from this repo into the instance's `playerengine/` folder. It turns off PlayerEngine's Player2 AI, sign-in prompts and mod-intelligence scanning. Remy doesn't need any of them.
 
-Installed duplicate-profile files:
+Memory: Homestead runs with a 6 GB heap. On a 16 GB PC, close Chrome and other heavy apps before launching; every Homestead crash on record was Windows running out of commit memory, not a mod bug.
 
-- `mods/playerengine-fabric-1.20.1-1.4.0.jar`
-- `mods/remy-playerengine-adapter-0.1.0.jar`
-- `config/playerengine/server_player2.json`
+## 2. In game
 
-The template at `config/playerengine/server_player2.json` is the hardened config used for the duplicate profile. It disables call-by-name chat, owner-offline continuation, ModIntelligence startup inspection/enrichment, RAG/live memory helpers, deep-check helpers, and TTS ack.
-
-Current pause point:
-
-- `New World - Remy LAN Test` is now the main Remy world, not a disposable scratch save.
-- A fresh complete backup must exist before any further adapter or mod changes.
-- The old Scarpet bridge app is disabled in the save scripts folder as `remy_bridge.sc.disabled-*`; do not reactivate it while testing PlayerEngine.
-- The PlayerEngine adapter is installed but has not been runtime-verified after the latest install checkpoint.
-
-Runtime startup verification:
-
-1. Back up the current Remy world before risky changes.
-2. Launch the duplicate Homestead profile.
-3. Open the Remy world.
-4. Inspect `latest.log` before testing commands.
-
-Expected startup evidence:
-
-```text
-Player2 server config: payerMode=OWNER_PAYS_ALL dedicated=false ownerOfflineContinue=false callByNameChat=false
-Player2 ModIntelligence config: enabled=false enrichmentEnabled=false
-Remy PlayerEngine adapter initialized
-ModIntelligence: disabled by config
+```
+/remyengine spawn          (Remy appears next to you)
+remy follow                (plain chat)
+/remyengine do get oak_log 4
 ```
 
-Unexpected evidence that should stop testing:
+`/remyengine commands` lists every PlayerEngine task Remy can run.
 
-```text
-Attempting local login
-Starting web device flow
-player2.game
-Player2 HTTP
+## 3. Brain providers (optional; rules work without any)
+
+`config/remy/brain.json` is created on first launch:
+
+```json
+{
+  "useModel": true,
+  "timeoutSeconds": 8,
+  "providers": [
+    { "name": "openrouter", "url": "https://openrouter.ai/api/alpha/decisions",
+      "model": "typesafe/jev-1.13", "apiKeyEnv": "OPENROUTER_API_KEY", "apiKey": "" },
+    { "name": "ollama", "url": "http://127.0.0.1:11434/v1/systemone",
+      "model": "tev1:0.8b", "apiKeyEnv": "", "apiKey": "" }
+  ]
+}
 ```
 
-Do not complete Player2 sign-in for this deterministic adapter test.
+Providers are tried in order and skipped when unavailable, so this means "Jev if there's a key, else local tev1, else rules".
 
-Manual test commands:
+- **Jev (hosted, TypeSafe):** $0.042 per million input tokens, output free; about 1,500 tokens per message, so roughly 6¢ per 1,000 commands. Put an OpenRouter key in the `OPENROUTER_API_KEY` environment variable (or `apiKey`). OpenRouter needs prepaid credit.
+- **tev1 (local, free):** install Ollama 0.35+, then `ollama pull tev1:0.8b` (~0.8 GB; `tev1` 4B is ~4.5 GB and more accurate). On a 16 GB machine running Homestead, start with 0.8b.
+- `/remyengine brain` reloads the file and shows which providers are usable.
 
-```text
-/remyengine status
-/remyengine spawn
-/remyengine status
-/remyengine come
-/remyengine stop
-/remyengine status
+The model is only asked to pick an intent and, when ambiguous, which registry item/mob you meant. Counts, names and the final command are filled in by code, and "stop" never goes to a model.
+
+## 4. Village builder (optional)
+
+See `village/README.md`. Short version: put patched agentcraft in `<instance>/remy/agentcraft`, run `/remyengine village setup` once (pip install), then `remy build a village here` or `/remyengine village 48`.
+
+## Building the mod
+
+```
+gradle --no-daemon build        # Gradle 8.10.x (Loom 1.7 doesn't work with Gradle 8.14)
+scripts/run-checks.sh           # plain-Java checks for the brain and the GDMC chunk encoder
 ```
 
-Only test `/remyengine follow` after spawn/come/stop are verified. Do not use `/playerengine`, Player2 natural-language commands, voice AI, or old Scarpet commands during PlayerEngine adapter verification.
-
-## Build
-
-The adapter builds with Gradle:
-
-```powershell
-.\gradlew.bat --no-daemon build
-```
-
-Build outputs must not be committed except through intentional release artifacts. Third-party jars, Minecraft saves, logs, player data, and local machine paths stay out of the repository.
-
-## Legacy Carpet/Scarpet Track
-
-The older Carpet bridge remains in the repo for recovery/history. It is not the active movement track.
-
-Legacy prerequisites:
-
-- Official Carpet release `1.4.112` for Minecraft `1.20` / `1.20.1`.
-- Node.js 20 or newer for the local file controller.
-
-Legacy flow:
-
-1. Copy `scarpet/remy_bridge.sc` into the copied world's `scripts` folder.
-2. Configure the owner file in the copied world's app data folder. Do not commit it.
-3. Load the app with `/script load remy_bridge` if needed.
-4. Use the Node controller only when deliberately testing the legacy bridge.
-
-Legacy commands:
-
-```text
-/remy_bridge follow
-/remy_bridge stop
-/remy_bridge status
-remy follow
-remy stop
-remy status
-```
-
-The legacy bridge proved spawn/read/look/short-move/stop, but custom follow/pathfinding is paused after runtime type issues.
+`libs/playerengine-fabric-1.20.1-1.4.0.jar` must be present (gitignored).

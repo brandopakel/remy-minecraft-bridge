@@ -46,11 +46,40 @@ public final class Architect {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
     private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
-    public static final class Config {
-        public String url = "https://openrouter.ai/api/v1/chat/completions";
-        public String model = "anthropic/claude-sonnet-5.5";
-        public String apiKeyEnv = "OPENROUTER_API_KEY";
+    /** One OpenAI-compatible chat endpoint. Tried in order; the first with a key that answers wins. */
+    public static final class Provider {
+        public String name;
+        public String url;
+        public String model;
+        public String apiKeyEnv = "";
         public String apiKey = "";
+        public boolean enabled = true;
+
+        Provider() {
+        }
+
+        Provider(String name, String url, String model, String apiKeyEnv) {
+            this.name = name;
+            this.url = url;
+            this.model = model;
+            this.apiKeyEnv = apiKeyEnv;
+        }
+
+        String key() {
+            if (apiKey != null && !apiKey.isBlank()) return apiKey;
+            return apiKeyEnv == null || apiKeyEnv.isBlank() ? null : System.getenv(apiKeyEnv);
+        }
+    }
+
+    public static final class Config {
+        /**
+         * Default: Google's Gemini API free tier (no card; key from aistudio.google.com/apikey),
+         * Pro first, Flash if Pro is rate-limited. OpenRouter only if you add a paid key.
+         */
+        public List<Provider> providers = new ArrayList<>(List.of(
+                new Provider("gemini-pro", GEMINI, "gemini-2.5-pro", "GEMINI_API_KEY"),
+                new Provider("gemini-flash", GEMINI, "gemini-2.5-flash", "GEMINI_API_KEY"),
+                new Provider("openrouter", "https://openrouter.ai/api/v1/chat/completions", "anthropic/claude-sonnet-5.5", "OPENROUTER_API_KEY")));
         public int maxX = 24;
         public int maxY = 20;
         public int maxZ = 24;
@@ -58,7 +87,21 @@ public final class Architect {
         public int maxTokens = 32000;
         public int timeoutSeconds = 300;
         public double temperature = 0.7;
+
+        public List<Provider> usable() {
+            List<Provider> out = new ArrayList<>();
+            for (Provider p : providers) {
+                if (p.enabled && p.key() != null && !p.key().isBlank()) out.add(p);
+            }
+            return out;
+        }
+
+        public String keyHint() {
+            return "set GEMINI_API_KEY (free key from aistudio.google.com/apikey) and restart CurseForge";
+        }
     }
+
+    static final String GEMINI = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
     public record Result(Blueprint blueprint, String error, List<String> warnings, String usage) {
     }
@@ -81,13 +124,6 @@ public final class Architect {
         }
     }
 
-    public static String apiKey(Config c) {
-        if (c.apiKey != null && !c.apiKey.isBlank()) {
-            return c.apiKey;
-        }
-        return c.apiKeyEnv == null || c.apiKeyEnv.isBlank() ? null : System.getenv(c.apiKeyEnv);
-    }
-
     /** Resolves "ns:id[props]" against the live block registry. */
     public static final Function<String, BlockState> REGISTRY_RESOLVER = s -> {
         try {
@@ -105,10 +141,9 @@ public final class Architect {
 
     public static CompletableFuture<Result> design(String request, BlockCatalog.Snapshot catalog) {
         Config cfg = config();
-        String key = apiKey(cfg);
-        if (key == null || key.isBlank()) {
-            return CompletableFuture.completedFuture(new Result(null,
-                    "no API key: set " + cfg.apiKeyEnv + " (or \"apiKey\" in config/remy/architect.json)", List.of(), ""));
+        List<Provider> providers = cfg.usable();
+        if (providers.isEmpty()) {
+            return CompletableFuture.completedFuture(new Result(null, "no design model key: " + cfg.keyHint(), List.of(), ""));
         }
         String palette = paletteText(shortlist(request, catalog, cfg.paletteFamilies));
         List<JsonObject> messages = new ArrayList<>();
@@ -116,27 +151,33 @@ public final class Architect {
         messages.add(message("user", "Request: " + request + "\n\nAvailable blocks (family | material | look | members):\n" + palette));
         return CompletableFuture.supplyAsync(() -> {
             StringBuilder usage = new StringBuilder();
-            try {
-                String reply = chat(cfg, key, messages, usage);
-                Blueprint.Parsed parsed = parse(reply, cfg);
-                if (!parsed.ok()) {
-                    LOGGER.info("Architect design failed validation, asking for a fix: {}", parsed.errors());
-                    messages.add(message("assistant", reply));
-                    messages.add(message("user", "That design has problems:\n- " + String.join("\n- ", parsed.errors())
-                            + "\nReturn the complete corrected JSON only."));
-                    reply = chat(cfg, key, messages, usage);
-                    parsed = parse(reply, cfg);
+            List<String> failures = new ArrayList<>();
+            for (Provider provider : providers) {
+                try {
+                    String reply = chat(cfg, provider, messages, usage);
+                    Blueprint.Parsed parsed = parse(reply, cfg);
+                    if (!parsed.ok()) {
+                        LOGGER.info("Architect design from {} failed validation, asking for a fix: {}", provider.name, parsed.errors());
+                        List<JsonObject> retry = new ArrayList<>(messages);
+                        retry.add(message("assistant", reply));
+                        retry.add(message("user", "That design has problems:\n- " + String.join("\n- ", parsed.errors())
+                                + "\nReturn the complete corrected JSON only."));
+                        reply = chat(cfg, provider, retry, usage);
+                        parsed = parse(reply, cfg);
+                    }
+                    saveDesign(request, reply);
+                    if (!parsed.ok()) {
+                        failures.add(provider.name + ": design didn't validate (" + String.join("; ", parsed.errors()) + ")");
+                        continue;
+                    }
+                    usage.append("via ").append(provider.name).append(" (").append(provider.model).append(")");
+                    return new Result(parsed.blueprint(), null, parsed.warnings(), usage.toString());
+                } catch (Exception e) {
+                    LOGGER.warn("Architect provider {} failed: {}", provider.name, e.toString());
+                    failures.add(provider.name + ": " + e.getMessage());
                 }
-                saveDesign(request, reply);
-                if (!parsed.ok()) {
-                    return new Result(null, "the design didn't validate: " + String.join("; ", parsed.errors()),
-                            parsed.warnings(), usage.toString());
-                }
-                return new Result(parsed.blueprint(), null, parsed.warnings(), usage.toString());
-            } catch (Exception e) {
-                LOGGER.warn("Architect call failed", e);
-                return new Result(null, e.getMessage(), List.of(), usage.toString());
             }
+            return new Result(null, String.join(" | ", failures), List.of(), usage.toString());
         });
     }
 
@@ -147,24 +188,29 @@ public final class Architect {
         return m;
     }
 
-    private static String chat(Config cfg, String key, List<JsonObject> messages, StringBuilder usage) throws Exception {
+    public static String modelsLabel(Config cfg) {
+        List<Provider> usable = cfg.usable();
+        return usable.isEmpty() ? "(no model configured)"
+                : usable.get(0).model + (usable.size() > 1 ? " (+" + (usable.size() - 1) + " fallbacks)" : "");
+    }
+
+    private static String chat(Config cfg, Provider provider, List<JsonObject> messages, StringBuilder usage) throws Exception {
         JsonObject body = new JsonObject();
-        body.addProperty("model", cfg.model);
+        body.addProperty("model", provider.model);
         body.addProperty("max_tokens", cfg.maxTokens);
         body.addProperty("temperature", cfg.temperature);
         JsonArray arr = new JsonArray();
         messages.forEach(arr::add);
         body.add("messages", arr);
-        HttpRequest req = HttpRequest.newBuilder(URI.create(cfg.url))
+        HttpRequest req = HttpRequest.newBuilder(URI.create(provider.url))
                 .timeout(Duration.ofSeconds(cfg.timeoutSeconds))
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + key)
-                .header("X-Title", "Remy Minecraft companion")
+                .header("Authorization", "Bearer " + provider.key())
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                 .build();
         HttpResponse<String> r = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
         if (r.statusCode() != 200) {
-            throw new IOException("architect model HTTP " + r.statusCode() + ": " + truncate(r.body(), 300));
+            throw new IOException(provider.model + " HTTP " + r.statusCode() + ": " + truncate(r.body(), 300));
         }
         JsonObject json = JsonParser.parseString(r.body()).getAsJsonObject();
         if (json.has("usage") && json.get("usage").isJsonObject()) {
@@ -172,8 +218,18 @@ public final class Architect {
             usage.append(u.has("prompt_tokens") ? u.get("prompt_tokens").getAsInt() : 0).append(" in / ")
                     .append(u.has("completion_tokens") ? u.get("completion_tokens").getAsInt() : 0).append(" out tokens; ");
         }
-        return json.getAsJsonArray("choices").get(0).getAsJsonObject()
-                .getAsJsonObject("message").get("content").getAsString();
+        if (json.has("error")) {
+            throw new IOException("architect model error: " + truncate(json.get("error").toString(), 300));
+        }
+        var choices = json.getAsJsonArray("choices");
+        if (choices == null || choices.isEmpty()) {
+            throw new IOException("architect model returned no choices");
+        }
+        var msg = choices.get(0).getAsJsonObject().getAsJsonObject("message");
+        if (msg == null || !msg.has("content") || msg.get("content").isJsonNull() || msg.get("content").getAsString().isBlank()) {
+            throw new IOException("architect model returned an empty reply");
+        }
+        return msg.get("content").getAsString();
     }
 
     private static void saveDesign(String request, String reply) {

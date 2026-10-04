@@ -67,7 +67,7 @@ import java.util.concurrent.CompletableFuture;
 public final class BlockCatalog {
     private static final Logger LOGGER = LoggerFactory.getLogger("remy_catalog");
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
 
     public static final class Entry {
         public String id;
@@ -240,24 +240,21 @@ public final class BlockCatalog {
         return "other";
     }
 
-    private static final String[] SUFFIXES = {
-            "_stairs", "_slab", "_wall", "_fence_gate", "_fence", "_door", "_trapdoor", "_button",
-            "_pressure_plate", "_pane", "_carpet", "_planks", "_log", "_wood", "_hyphae", "_stem", "_block"};
+    /** Shape/part words dropped when grouping blocks into families ("blue_roof_stairs_oak" -> "blue_roof_oak"). */
+    private static final Set<String> SHAPE_WORDS = Set.of(
+            "stairs", "stair", "slab", "slabs", "wall", "walls", "fence", "gate", "door", "trapdoor", "button",
+            "pressure", "plate", "pane", "carpet", "planks", "plank", "log", "wood", "hyphae", "stem", "block",
+            "stripped", "vertical", "corner", "step", "steps");
 
     static String family(String path) {
-        String p = path;
-        if (p.startsWith("stripped_")) {
-            p = p.substring("stripped_".length());
+        List<String> kept = new ArrayList<>();
+        for (String t : path.split("_")) {
+            if (t.isEmpty() || SHAPE_WORDS.contains(t)) continue;
+            if (t.equals("bricks")) t = "brick";
+            else if (t.equals("tiles")) t = "tile";
+            kept.add(t);
         }
-        for (String suffix : SUFFIXES) {
-            if (p.endsWith(suffix) && p.length() > suffix.length()) {
-                p = p.substring(0, p.length() - suffix.length());
-                break;
-            }
-        }
-        if (p.endsWith("bricks")) p = p.substring(0, p.length() - 1);
-        else if (p.endsWith("tiles")) p = p.substring(0, p.length() - 1);
-        return p;
+        return kept.isEmpty() ? path : String.join("_", kept);
     }
 
     private static final Map<BlockSoundGroup, String> SOUND_MATERIALS = new HashMap<>();

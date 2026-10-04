@@ -51,13 +51,12 @@ public final class ArchitectFlow {
         MinecraftServer server = owner.getServer();
         UUID id = owner.getUuid();
         Architect.Config cfg = Architect.config();
-        String key = Architect.apiKey(cfg);
-        if (key == null || key.isBlank()) {
-            tell(owner, "I need a design model for that. Set " + cfg.apiKeyEnv + " (an OpenRouter key) and restart, or put the key in "
-                    + "config/remy/architect.json. Meanwhile: /remyengine blueprint <name> loads a saved design.");
+        if (cfg.usable().isEmpty()) {
+            tell(owner, "I need a design model for that: " + cfg.keyHint() + ". Meanwhile: /remyengine blueprint <name> loads a saved design ("
+                    + String.join(", ", savedDesigns()) + ").");
             return;
         }
-        tell(owner, "Sketching \"" + request + "\" with " + cfg.model + "... this takes a minute or two.");
+        tell(owner, "Sketching \"" + request + "\" with " + Architect.modelsLabel(cfg) + "... free models are slow, give me a few minutes.");
         BlockCatalog.get(server, false)
                 .thenCompose(cat -> Architect.design(request, cat))
                 .whenComplete((res, err) -> server.execute(() -> {
